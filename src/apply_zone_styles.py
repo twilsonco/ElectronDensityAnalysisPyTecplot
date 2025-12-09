@@ -18,7 +18,7 @@ from zone_style_config import (
 )
 
 # Constant for atom sphere minimum size
-ATOM_MIN_SPHERE_SIZE = 2.5
+ATOM_MIN_SPHERE_SIZE = 2.0
 
 # Predefined colors with their RGB values for color matching
 PREDEFINED_COLORS = {
@@ -31,11 +31,9 @@ PREDEFINED_COLORS = {
     Color.Yellow: (1, 1, 0),
     Color.Cyan: (0, 1, 1),
     Color.Magenta: (1, 0, 1),
-    
     # Greys and neutrals
     Color.Grey: (0.5, 0.5, 0.5),
     Color.LightGrey: (0.75, 0.75, 0.75),
-    
     # Reds and warm colors
     Color.Orange: (1, 0.65, 0),
     Color.Coral: (1, 0.5, 0.31),
@@ -45,7 +43,6 @@ PREDEFINED_COLORS = {
     Color.HotPink: (1, 0.41, 0.71),
     Color.Raspberry: (0.9, 0.04, 0.52),
     Color.BrightPink: (1, 0.08, 0.58),
-    
     # Purples and violets
     Color.Purple: (0.5, 0, 0.5),
     Color.Violet: (0.93, 0.51, 0.93),
@@ -55,7 +52,6 @@ PREDEFINED_COLORS = {
     Color.DeepViolet: (0.25, 0, 0.4),
     Color.MediumPurple: (0.58, 0.44, 0.86),
     Color.LightPurple: (0.87, 0.63, 0.87),
-    
     # Blues and cyans
     Color.Azure: (0, 0.5, 1),
     Color.BrightBlue: (0, 0.75, 1),
@@ -71,7 +67,6 @@ PREDEFINED_COLORS = {
     Color.GreyTeal: (0.3, 0.5, 0.5),
     Color.WarmBlue: (0.26, 0.57, 0.78),
     Color.DuskyBlue: (0.24, 0.44, 0.59),
-    
     # Greens
     Color.LimeGreen: (0.2, 0.8, 0.2),
     Color.LightGreen: (0.56, 0.93, 0.56),
@@ -88,7 +83,6 @@ PREDEFINED_COLORS = {
     Color.YellowGreen: (0.6, 0.8, 0.2),
     Color.LightMintGreen: (0.7, 1, 0.8),
     Color.Olive: (0.5, 0.5, 0),
-    
     # Yellows and oranges
     Color.Lemon: (1, 0.97, 0.28),
     Color.Khaki: (0.94, 0.9, 0.55),
@@ -96,22 +90,18 @@ PREDEFINED_COLORS = {
     Color.LightOrange: (1, 0.75, 0.4),
     Color.LightSalmon: (1, 0.63, 0.48),
     Color.Cinnamon: (0.82, 0.41, 0.12),
-    
     # Pinks and warm pastels
     Color.BubbleGum: (1, 0.76, 0.81),
     Color.LightMagenta: (1, 0.5, 1),
-    
     # Maroons and dark colors
     Color.LightMaroon: (0.65, 0.2, 0.2),
 }
 
 
-
-
 def get_closest_color_for_hex(hex_color_str):
     """
     Find the closest predefined Color enum for a hex color string.
-    
+
     Uses Euclidean distance in RGB space to find the nearest match.
 
     Args:
@@ -122,7 +112,7 @@ def get_closest_color_for_hex(hex_color_str):
     """
     if not hex_color_str or not hex_color_str.startswith("#"):
         return Color.White
-    
+
     try:
         hex_color = hex_color_str.lstrip("#")
         r = int(hex_color[0:2], 16) / 255.0
@@ -131,28 +121,28 @@ def get_closest_color_for_hex(hex_color_str):
         target_rgb = (r, g, b)
     except (ValueError, IndexError):
         return Color.White
-    
+
     # Find closest color using Euclidean distance
-    min_distance = float('inf')
+    min_distance = float("inf")
     closest_color = Color.White
-    
+
     for color, rgb in PREDEFINED_COLORS.items():
         distance = math.sqrt(
-            (target_rgb[0] - rgb[0])**2 +
-            (target_rgb[1] - rgb[1])**2 +
-            (target_rgb[2] - rgb[2])**2
+            (target_rgb[0] - rgb[0]) ** 2
+            + (target_rgb[1] - rgb[1]) ** 2
+            + (target_rgb[2] - rgb[2]) ** 2
         )
         if distance < min_distance:
             min_distance = distance
             closest_color = color
-    
+
     return closest_color
 
 
 def get_atom_color_from_aux_data(zone):
     """
     Extract and map color from zone's AtomColor aux data to closest Color enum.
-    
+
     Parses hex color strings (e.g., "#ffffff") and maps to the nearest
     predefined Tecplot Color enum value using Euclidean distance in RGB space.
 
@@ -167,6 +157,8 @@ def get_atom_color_from_aux_data(zone):
         return get_closest_color_for_hex(color_hex)
     except (KeyError, AttributeError):
         return None
+
+
 def get_atom_size_from_aux_data(zone):
     """
     Calculate scatter size based on AtomElementNumber aux data.
@@ -187,15 +179,19 @@ def get_atom_size_from_aux_data(zone):
         return None
 
 
-# Connect to Tecplot 360 session
-tecplot.session.connect()
+def apply_zone_styles():
+    """
+    Apply zone styling to the currently loaded dataset.
+    
+    Requires an active Tecplot frame with a loaded dataset.
+    """
+    frame = tecplot.active_frame()
+    dataset = frame.dataset if frame is not None else None
 
-frame = tecplot.active_frame()
-dataset = frame.dataset if frame is not None else None
+    if dataset is None:
+        print("No dataset loaded in the active frame.")
+        return
 
-if dataset is None:
-    print("No dataset loaded in the active frame.")
-else:
     # Create defaultdict with zone type style configurations
     zone_styles = defaultdict(lambda: ZoneStyleConfig())
 
@@ -235,7 +231,7 @@ else:
             show=True,
             symbol_shape=GeomShape.Sphere,
             color=Color.White,
-            size=4.0,
+            size=2.0,
         ),
     )
 
@@ -246,7 +242,7 @@ else:
             show=True,
             symbol_shape=GeomShape.Sphere,
             color=Color.Red,
-            size=1.8,
+            size=1.0,
         ),
     )
 
@@ -298,6 +294,8 @@ else:
     zones = list(dataset.zones())
     print(f"Processing {len(zones)} zones...")
 
+    zone_type_counts = defaultdict(lambda: 0)
+
     # Apply styles to each zone
     for zone in zones:
         try:
@@ -306,6 +304,8 @@ else:
             zone_type = None
 
         print(f"Zone: {zone.name}, ZoneType: {zone_type}")
+
+        zone_type_counts[zone_type] += 1
 
         # Get and apply the style config for this zone type
         zone_styles[zone_type].apply_zone_style(zone)
@@ -316,38 +316,39 @@ else:
         plot = frame.plot()
         if plot is not None:
             # Check which layers are in use by enabled zones
-            layers_in_use = {"scatter": False, "mesh": False, "contour": False, 
-                           "shade": False, "vector": False, "edge": False}
-            
+            layers_in_use = {
+                "scatter": False,
+                "mesh": False,
+                "contour": False,
+                "shade": False,
+                "vector": False,
+                "edge": False,
+            }
+
             for zone_type, config in zone_styles.items():
-                if config.zone_enabled:
-                    if config.scatter_config.show:
-                        layers_in_use["scatter"] = True
-                    if config.mesh_config.show:
-                        layers_in_use["mesh"] = True
-                    if config.contour_config.show:
-                        layers_in_use["contour"] = True
-                    if config.shade_config.show:
-                        layers_in_use["shade"] = True
-                    if config.vector_config.show:
-                        layers_in_use["vector"] = True
-                    if config.edge_config.show:
-                        layers_in_use["edge"] = True
-            
+                if zone_type_counts[zone_type] > 0 and config.zone_enabled:
+                    layers_in_use["scatter"] |= config.scatter_config.show
+                    layers_in_use["mesh"] |= config.mesh_config.show
+                    layers_in_use["contour"] |= config.contour_config.show
+                    layers_in_use["shade"] |= config.shade_config.show
+                    layers_in_use["vector"] |= config.vector_config.show
+                    layers_in_use["edge"] |= config.edge_config.show
+
             # Activate plot-level layers that are in use
-            if layers_in_use["scatter"]:
-                plot.show_scatter = True
-            if layers_in_use["mesh"]:
-                plot.show_mesh = True
-            if layers_in_use["contour"]:
-                plot.show_contour = True
-            if layers_in_use["shade"]:
-                plot.show_shade = True
-            if layers_in_use["vector"]:
-                plot.show_vector = True
-            if layers_in_use["edge"]:
-                plot.show_edge = True
-            
+            plot.show_scatter = layers_in_use["scatter"]
+            plot.show_mesh = layers_in_use["mesh"]
+            plot.show_contour = layers_in_use["contour"]
+            plot.show_shade = layers_in_use["shade"]
+            plot.show_vector = layers_in_use["vector"]
+            plot.show_edge = layers_in_use["edge"]
+
             print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
 
     print("Zone styling complete.")
+
+
+if __name__ == "__main__":
+    # Connect to Tecplot 360 session
+    tecplot.session.connect()
+    
+    apply_zone_styles()
