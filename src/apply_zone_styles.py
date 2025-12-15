@@ -179,6 +179,53 @@ def get_atom_size_from_aux_data(zone):
         return None
 
 
+def get_color_for_critical_point_index(zone):
+    """
+    Map CriticalPointIndex aux data to a Color enum.
+
+    Creates an index from unique CriticalPointIndex values encountered
+    and maps to colors from PREDEFINED_COLORS using modulo arithmetic.
+
+    Args:
+        zone: The tecplot Zone object
+
+    Returns:
+        tecplot.constant.Color enum value, or None if CriticalPointIndex not found
+    """
+    try:
+        critical_point_index = int(zone.aux_data["CriticalPointIndex"])
+        # Get list of available colors
+        color_list = list(PREDEFINED_COLORS.keys())
+        # Use modulo to cycle through colors
+        selected_color = color_list[critical_point_index % len(color_list)]
+        return selected_color
+    except (ValueError, KeyError, AttributeError, IndexError):
+        return None
+
+
+def get_color_for_basin_index(zone):
+    """
+    Map BasinIndex aux data to a Color enum.
+
+    Maps to colors from PREDEFINED_COLORS using modulo arithmetic.
+
+    Args:
+        zone: The tecplot Zone object
+
+    Returns:
+        tecplot.constant.Color enum value, or None if BasinIndex not found
+    """
+    try:
+        basin_index = int(zone.aux_data["BasinIndex"])
+        # Get list of available colors
+        color_list = list(PREDEFINED_COLORS.keys())
+        # Use modulo to cycle through colors
+        selected_color = color_list[basin_index % len(color_list)]
+        return selected_color
+    except (ValueError, KeyError, AttributeError, IndexError):
+        return None
+
+
 def apply_zone_styles():
     """
     Apply zone styling to the currently loaded dataset.
@@ -290,13 +337,47 @@ def apply_zone_styles():
         mesh_config=MeshConfig(show=True, color=Color.Black, line_thickness=0.4),
     )
 
+    # CondensedBasinSurface: shade only, 50% translucent, disabled by default, color from CriticalPointIndex
+    zone_styles["CondensedBasinSurface"] = ZoneStyleConfig(
+        zone_enabled=False,
+        shade_config=ShadeConfig(
+            show=True,
+            color_function=get_color_for_critical_point_index,
+            translucency=0.5,
+        ),
+    )
+
+    # CondensedBasinSphere: shade only, color from BasinIndex
+    zone_styles["CondensedBasinSphere"] = ZoneStyleConfig(
+        zone_enabled=False,
+        shade_config=ShadeConfig(
+            show=True,
+            color_function=get_color_for_basin_index,
+        ),
+    )
+
     # Get all zones
     zones = list(dataset.zones())
     print(f"Processing {len(zones)} zones...")
 
     zone_type_counts = defaultdict(lambda: 0)
 
-    # Apply styles to each zone
+    # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
+    condensed_basin_sphere_critical_indices = set()
+    for zone in zones:
+        try:
+            zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
+        except (KeyError, AttributeError):
+            zone_type = None
+
+        if zone_type == "CondensedBasinSphere":
+            try:
+                critical_point_index = int(zone.aux_data["CriticalPointIndex"])
+                condensed_basin_sphere_critical_indices.add(critical_point_index)
+            except (ValueError, KeyError, AttributeError):
+                pass
+
+    # Second pass: apply styles to each zone
     for zone in zones:
         try:
             zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
@@ -306,6 +387,17 @@ def apply_zone_styles():
         print(f"Zone: {zone.name}, ZoneType: {zone_type}")
 
         zone_type_counts[zone_type] += 1
+
+        # Special handling: hide AtomSphereData zones if corresponding CondensedBasinSphere exists
+        if zone_type == "AtomSphereData":
+            try:
+                critical_point_index = int(zone.aux_data["CriticalPointIndex"])
+                if critical_point_index in condensed_basin_sphere_critical_indices:
+                    # Skip this zone - don't apply styling (it will remain disabled)
+                    print(f"  → Skipping (CondensedBasinSphere exists for CriticalPointIndex {critical_point_index})")
+                    continue
+            except (ValueError, KeyError, AttributeError):
+                pass
 
         # Get and apply the style config for this zone type
         zone_styles[zone_type].apply_zone_style(zone)

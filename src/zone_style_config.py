@@ -194,14 +194,16 @@ class MeshConfig(StyleConfig):
 class ContourConfig(StyleConfig):
     """Configuration for contour layer styling."""
 
-    def __init__(self, show: bool = False):
+    def __init__(self, show: bool = False, translucency: Optional[float] = None):
         """
         Initialize contour layer configuration.
 
         Args:
             show: Whether to show the contour layer
+            translucency: Translucency value (0.0-1.0 or 0-100). If provided, enables effects and surface translucency.
         """
         self.show = show
+        self.translucency = translucency
 
     def apply_zone_style(self, zone):
         """Apply contour styling to a zone."""
@@ -218,6 +220,14 @@ class ContourConfig(StyleConfig):
             contour = fieldmap.contour
 
             contour.show = self.show
+
+            # Handle translucency if specified
+            if self.translucency is not None:
+                effects = fieldmap.effects
+                effects.use_translucency = True
+                # Convert 0.0-1.0 to 0-100 if needed
+                translucency_percent = int(self.translucency * 100) if self.translucency <= 1.0 else int(self.translucency)
+                effects.surface_translucency = translucency_percent
         except Exception as e:
             print(f"Error applying contour style to zone {zone.name}: {e}")
 
@@ -226,7 +236,7 @@ class ShadeConfig(StyleConfig):
     """Configuration for shade layer styling."""
 
     def __init__(
-        self, show: bool = False, color: Optional[Color] = None, color_function=None
+        self, show: bool = False, color: Optional[Color] = None, color_function=None, translucency: Optional[float] = None
     ):
         """
         Initialize shade layer configuration.
@@ -235,10 +245,12 @@ class ShadeConfig(StyleConfig):
             show: Whether to show the shade layer
             color: Shade color (Color enum, e.g., Color.White)
             color_function: Callable that takes a zone and returns Color enum. If provided, overrides color.
+            translucency: Translucency value (0.0-1.0 or 0-100). If provided, enables effects and surface translucency.
         """
         self.show = show
         self.color = color
         self.color_function = color_function
+        self.translucency = translucency
 
     def apply_zone_style(self, zone):
         """Apply shade styling to a zone."""
@@ -263,6 +275,14 @@ class ShadeConfig(StyleConfig):
                     shade.color = computed_color
             elif self.color is not None:
                 shade.color = self.color
+
+            # Handle translucency if specified
+            if self.translucency is not None:
+                effects = fieldmap.effects
+                effects.use_translucency = True
+                # Convert 0.0-1.0 to 0-100 if needed
+                translucency_percent = int(self.translucency * 100) if self.translucency <= 1.0 else int(self.translucency)
+                effects.surface_translucency = translucency_percent
         except Exception as e:
             print(f"Error applying shade style to zone {zone.name}: {e}")
 
