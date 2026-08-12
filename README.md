@@ -60,7 +60,7 @@ Ensure you have:
 #### 1. Clone or Download the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/twilsonco/ElectronDensityAnalysisPyTecplot.git
 cd ElectronDensityAnalysisPyTecplot
 ```
 
@@ -361,18 +361,23 @@ Or add this to your `~/.bashrc` or `~/.zshrc` for persistent configuration.
 
 ## License
 
-[Add your license information here]
+MIT License - See LICENSE file for details
 
 ## Contributing
 
-[Add contribution guidelines here]
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+For major changes, please open an issue first to discuss what you would like to change.
 
 ## Authors
 
-[Add author information here]
+**Cody T. Wilson** - Initial implementation
+
+See [GitHub contributors](https://github.com/twilsonco/ElectronDensityAnalysisPyTecplot/graphs/contributors) for a list of contributors.
 
 ---
 
+**Repository**: [twilsonco/ElectronDensityAnalysisPyTecplot](https://github.com/twilsonco/ElectronDensityAnalysisPyTecplot)  
 **Last Updated**: 2026-08-12  
 **Python Version**: 3.13+  
 **Package Manager**: uv 0.7.9+
