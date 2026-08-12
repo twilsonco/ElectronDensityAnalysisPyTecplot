@@ -6,6 +6,8 @@ styling configurations based on each zone's ZoneType aux data value.
 """
 
 import math
+import time
+
 import tecplot
 from collections import defaultdict
 from tecplot.constant import Color, GeomShape, FillMode
@@ -378,6 +380,8 @@ def apply_zone_styles():
                 pass
 
     # Second pass: apply styles to each zone
+    start_time = time.perf_counter()
+
     for zone in zones:
         try:
             zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
@@ -401,6 +405,9 @@ def apply_zone_styles():
 
         # Get and apply the style config for this zone type
         zone_styles[zone_type].apply_zone_style(zone)
+
+    elapsed_time = time.perf_counter() - start_time
+    print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")
 
     # Activate layers that are in use by any enabled zone
     frame = tecplot.active_frame()
