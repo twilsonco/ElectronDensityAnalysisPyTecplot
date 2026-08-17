@@ -239,6 +239,22 @@ source .venv/bin/activate
 
 **For this project, use batch mode** via `./run_batch.sh` for all production scripts.
 
+#### The `apply_zone_styles_batch.py` Script: Batch Mode Processing
+
+The `apply_zone_styles_batch.py` script provides pure batch mode processing with two modes:
+
+```bash
+# SINGLE FILE: Process one .plt file (no Tecplot instance needed)
+./run_batch.sh src/apply_zone_styles_batch.py /path/to/file.plt
+# → Outputs: /path/to/file.lpk
+
+# DIRECTORY: Process all .plt files in a directory (no Tecplot instance needed)
+./run_batch.sh src/apply_zone_styles_batch.py /path/to/directory
+# → Processes all .plt files, outputting .lpk for each, deleting original .plt files
+```
+
+Both modes use PyTecplot batch mode, so no running Tecplot instance is required. Perfect for automated batch processing workflows.
+
 ### Script Examples
 
 #### 1. Hello World Example
@@ -255,20 +271,27 @@ source .venv/bin/activate
 # Displays: Zone types, auxiliary data, and dataset properties
 ```
 
-#### 3. Apply Zone Styling (Single File)
+#### 3. Apply Zone Styling (Single File - Batch Mode)
 
-Requires Tecplot 360 EX to be running with a data file loaded in connected mode (see Connected Mode section below).
+Process a single `.plt` file without needing a running Tecplot instance:
+
+```bash
+./run_batch.sh src/apply_zone_styles_batch.py /path/to/file.plt
+# Outputs: /path/to/file.lpk
+```
 
 #### 4. Batch Process Multiple Files
 
+Process all `.plt` files in a directory using batch mode (no Tecplot instance required):
+
 ```bash
-./run_batch.sh src/apply_zone_styles_batch.py
-# Processes all files specified in configuration
+./run_batch.sh src/apply_zone_styles_batch.py /path/to/directory
+# For each file: loads .plt → applies styles → saves .lpk → deletes .plt
 ```
 
 ### Connected Mode (For Interactive Development)
 
-If you need to interactively connect to a running Tecplot 360 EX GUI:
+If you need to interactively connect to a running Tecplot 360 EX GUI for real-time visualization:
 
 1. **Start Tecplot 360 EX** with your data file loaded
 2. **Enable PyTecplot connections:**
@@ -279,7 +302,7 @@ If you need to interactively connect to a running Tecplot 360 EX GUI:
    python src/apply_zone_styles.py  # Will connect to running GUI
    ```
 
-This mode updates the visualization in real-time but is significantly slower due to socket communication overhead. Use batch mode for production workflows.
+This mode updates the visualization in real-time but is significantly slower due to socket communication overhead. Use batch mode (`apply_zone_styles_batch.py`) for production workflows.
 
 ## Zone Type Configurations
 

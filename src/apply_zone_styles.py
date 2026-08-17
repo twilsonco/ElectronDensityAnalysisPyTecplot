@@ -329,7 +329,7 @@ def apply_zone_styles():
 
     # GradientPath: mesh only, size 0.2
     zone_styles["GradientPath"] = ZoneStyleConfig(
-        zone_enabled=True,
+        zone_enabled=False,
         mesh_config=MeshConfig(show=True, line_thickness=0.2),
     )
 
