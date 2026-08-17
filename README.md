@@ -183,56 +183,103 @@ If not, set the environment variable:
 
 ## Usage
 
-### Basic Workflow
+### Running Scripts in Batch Mode (Recommended)
+
+**Batch mode** is the recommended approach for running PyTecplot scripts. It runs significantly faster than connected mode because PyTecplot directly interfaces with the Tecplot engine libraries rather than communicating through sockets with the GUI.
+
+#### Quick Start (macOS/Linux)
+
+Use the provided `run_batch.sh` wrapper script to automatically handle environment setup:
+
+```bash
+# Run any script in batch mode
+./run_batch.sh src/hello_world.py
+
+# Run with arguments
+./run_batch.sh src/apply_zone_styles.py --option value
+
+# Run batch processing
+./run_batch.sh src/apply_zone_styles_batch.py
+```
+
+#### What run_batch.sh Does
+
+The wrapper script:
+1. Activates your Python virtual environment (`.venv`)
+2. Configures Tecplot library paths using `tec360-env`
+3. Runs your Python script with the correct environment
+
+This gives you the best of both worlds:
+- ✅ Your project dependencies from `.venv`
+- ✅ Tecplot library paths for batch mode execution
+- ✅ Significantly faster script execution than connected mode
+
+#### Manual Setup (If Needed)
+
+If you prefer to set up the environment manually:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run with tec360-env
+"/Applications/Tecplot 360 EX 2025 R1/bin/tec360-env" -- python src/script_name.py
+```
+
+> **Note:** Replace `2025 R1` with your installed version of Tecplot 360 EX.
+
+### Batch vs. Connected Mode
+
+| Aspect | Batch Mode | Connected Mode |
+|--------|-----------|-----------------|
+| **Speed** | ⚡ Fast (recommended) | 🐢 Slow (socket overhead) |
+| **GUI Updates** | ❌ None (engine only) | ✅ Updates GUI in real-time |
+| **Setup** | Requires `tec360-env` | Only needs venv activation |
+| **Use Case** | Data processing, batch jobs | Interactive debugging |
+
+**For this project, use batch mode** via `./run_batch.sh` for all production scripts.
+
+### Script Examples
+
+#### 1. Hello World Example
+
+```bash
+./run_batch.sh src/hello_world.py
+# Outputs: hello_world.png
+```
+
+#### 2. Explore Dataset Structure
+
+```bash
+./run_batch.sh src/explore_data_set.py
+# Displays: Zone types, auxiliary data, and dataset properties
+```
+
+#### 3. Apply Zone Styling (Single File)
+
+Requires Tecplot 360 EX to be running with a data file loaded in connected mode (see Connected Mode section below).
+
+#### 4. Batch Process Multiple Files
+
+```bash
+./run_batch.sh src/apply_zone_styles_batch.py
+# Processes all files specified in configuration
+```
+
+### Connected Mode (For Interactive Development)
+
+If you need to interactively connect to a running Tecplot 360 EX GUI:
 
 1. **Start Tecplot 360 EX** with your data file loaded
-2. **Ensure your Python environment is activated:**
+2. **Enable PyTecplot connections:**
+   - In Tecplot: `Scripting` → `PyTecplot Connections...` → Enable (default port 7600)
+3. **Activate your environment and run:**
    ```bash
-   source .venv/bin/activate  # macOS/Linux
-   # or
-   .venv\Scripts\activate     # Windows
+   source .venv/bin/activate
+   python src/apply_zone_styles.py  # Will connect to running GUI
    ```
-3. **Run the styling script**:
-   ```bash
-   python src/apply_zone_styles.py
-   ```
-4. The script will automatically connect to the running Tecplot session and apply zone styling based on ZoneType metadata
 
-### Batch Processing
-
-For processing multiple files:
-
-```bash
-python src/apply_zone_styles_batch.py
-```
-
-### Exploring Data
-
-To inspect dataset structure and zone properties:
-
-```bash
-python src/explore_data_set.py
-```
-
-### Example Usage
-
-```python
-from zone_style_config import ZoneStyleConfig, ScatterConfig
-import tecplot
-
-# Connect to running Tecplot 360 EX instance
-tecplot.session.connect()
-
-# Get the active dataset
-dataset = tecplot.active_frame().dataset
-
-# Create a custom configuration
-config = ZoneStyleConfig(zone_enabled=True, scatter_config=ScatterConfig(...))
-
-# Apply to a zone
-for zone in dataset.zones():
-    config.apply_zone_style(zone)
-```
+This mode updates the visualization in real-time but is significantly slower due to socket communication overhead. Use batch mode for production workflows.
 
 ## Zone Type Configurations
 
