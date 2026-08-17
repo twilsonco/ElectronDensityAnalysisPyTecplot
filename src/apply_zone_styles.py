@@ -338,6 +338,16 @@ def apply_zone_styles():
         zone_enabled=True,
         mesh_config=MeshConfig(show=True, color=Color.Black, line_thickness=0.4),
     )
+    
+    zone_styles["RingPath"] = ZoneStyleConfig(
+        zone_enabled=False,
+        mesh_config=MeshConfig(show=True, color=Color.Green, line_thickness=0.4),
+    )
+    
+    zone_styles["CagePath"] = ZoneStyleConfig(
+        zone_enabled=False,
+        mesh_config=MeshConfig(show=True, color=Color.Cyan, line_thickness=0.4),
+    )
 
     # CondensedBasinSurface: shade only, 50% translucent, disabled by default, color from CriticalPointIndex
     zone_styles["CondensedBasinSurface"] = ZoneStyleConfig(
@@ -368,6 +378,7 @@ def apply_zone_styles():
     condensed_basin_sphere_critical_indices = set()
     for zone in zones:
         try:
+            
             zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
         except (KeyError, AttributeError):
             zone_type = None
@@ -382,13 +393,15 @@ def apply_zone_styles():
     # Second pass: apply styles to each zone
     start_time = time.perf_counter()
 
-    for zone in zones:
+    for zi, zone in enumerate(zones):
         try:
             zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
         except (KeyError, AttributeError):
             zone_type = None
 
-        print(f"Zone: {zone.name}, ZoneType: {zone_type}")
+        elapsed_time = time.perf_counter() - start_time
+        total_time = elapsed_time / (zi + 1) * len(zones)
+        print(f"Elapsed: {elapsed_time:.0f}s/{total_time:.0f}s, Zone {zi} of {len(zones)}: {zone.name}, ZoneType: {zone_type}")
 
         zone_type_counts[zone_type] += 1
 
@@ -401,6 +414,15 @@ def apply_zone_styles():
                     print(f"  → Skipping (CondensedBasinSphere exists for CriticalPointIndex {critical_point_index})")
                     continue
             except (ValueError, KeyError, AttributeError):
+                pass
+        
+        if zone_type == "GradientPath":
+            try:
+                path_type = zone.aux_data["PathType"]
+                if path_type in zone_styles:
+                    # Use the specific PathType style if defined
+                    zone_type = path_type
+            except (KeyError, AttributeError):
                 pass
 
         # Get and apply the style config for this zone type
