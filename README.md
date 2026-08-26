@@ -202,6 +202,8 @@ Use the provided `run_batch.sh` wrapper script to automatically handle environme
 ./run_batch.sh src/apply_zone_styles_batch.py
 ```
 
+> **Note:** The `run_batch.sh` script includes an explicit path to your Tecplot 360 EX installation. Update the path if your installation is in a different location or your version differs from `2025 R1`. The script ensures that the correct environment variables are set for Tecplot batch mode execution.
+
 #### What run_batch.sh Does
 
 The wrapper script:

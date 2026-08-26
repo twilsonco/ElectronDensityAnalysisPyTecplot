@@ -23,5 +23,6 @@ source "$SCRIPT_DIR/.venv/bin/activate"
 
 # Run the script with tec360-env for batch mode
 # The tec360-env script sets up the correct environment variables for
-# the Tecplot 360 engine to run in batch mode
+# the Tecplot 360 engine to run in batch mode.
+# Point the below path to your Tecplot 360 installation directory.
 "/Applications/Tecplot 360 EX 2025 R1/bin/tec360-env" -- python "$@"
