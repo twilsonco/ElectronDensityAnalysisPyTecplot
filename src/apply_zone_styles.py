@@ -22,6 +22,16 @@ from zone_style_config import (
 # Constant for atom sphere minimum size
 ATOM_MIN_SPHERE_SIZE = 2.0
 
+# Pre-built color list for efficient cycling (used in color mapping functions)
+_COLOR_LIST = None
+
+def _get_color_list():
+    """Get or build the pre-cached color list for color mapping functions."""
+    global _COLOR_LIST
+    if _COLOR_LIST is None:
+        _COLOR_LIST = list(PREDEFINED_COLORS.keys())
+    return _COLOR_LIST
+
 # Predefined colors with their RGB values for color matching
 PREDEFINED_COLORS = {
     # Primary colors
@@ -185,8 +195,7 @@ def get_color_for_critical_point_index(zone):
     """
     Map CriticalPointIndex aux data to a Color enum.
 
-    Creates an index from unique CriticalPointIndex values encountered
-    and maps to colors from PREDEFINED_COLORS using modulo arithmetic.
+    Uses pre-built color list and modulo arithmetic for efficient cycling.
 
     Args:
         zone: The tecplot Zone object
@@ -195,9 +204,11 @@ def get_color_for_critical_point_index(zone):
         tecplot.constant.Color enum value, or None if CriticalPointIndex not found
     """
     try:
-        critical_point_index = int(zone.aux_data["CriticalPointIndex"])
-        # Get list of available colors
-        color_list = list(PREDEFINED_COLORS.keys())
+        # Get aux_data dict (pre-cached by caller) or fall back to zone.aux_data
+        aux_data = getattr(zone, '_aux_data_cache', zone.aux_data)
+        critical_point_index = int(aux_data["CriticalPointIndex"])
+        # Use pre-built color list
+        color_list = _get_color_list()
         # Use modulo to cycle through colors
         selected_color = color_list[critical_point_index % len(color_list)]
         return selected_color
@@ -209,7 +220,7 @@ def get_color_for_basin_index(zone):
     """
     Map BasinIndex aux data to a Color enum.
 
-    Maps to colors from PREDEFINED_COLORS using modulo arithmetic.
+    Uses pre-built color list and modulo arithmetic for efficient cycling.
 
     Args:
         zone: The tecplot Zone object
@@ -218,9 +229,11 @@ def get_color_for_basin_index(zone):
         tecplot.constant.Color enum value, or None if BasinIndex not found
     """
     try:
-        basin_index = int(zone.aux_data["BasinIndex"])
-        # Get list of available colors
-        color_list = list(PREDEFINED_COLORS.keys())
+        # Get aux_data dict (pre-cached by caller) or fall back to zone.aux_data
+        aux_data = getattr(zone, '_aux_data_cache', zone.aux_data)
+        basin_index = int(aux_data["BasinIndex"])
+        # Use pre-built color list
+        color_list = _get_color_list()
         # Use modulo to cycle through colors
         selected_color = color_list[basin_index % len(color_list)]
         return selected_color
@@ -233,6 +246,7 @@ def apply_zone_styles():
     Apply zone styling to the currently loaded dataset.
     
     Requires an active Tecplot frame with a loaded dataset.
+    Uses session.suspend() for bulk performance and optimized bulk operations.
     """
     frame = tecplot.active_frame()
     dataset = frame.dataset if frame is not None else None
@@ -240,232 +254,264 @@ def apply_zone_styles():
     if dataset is None:
         print("No dataset loaded in the active frame.")
         return
-
-    # Create defaultdict with zone type style configurations
-    zone_styles = defaultdict(lambda: ZoneStyleConfig())
-
-    # Define specific zone type configurations
-    # No ZoneType: all layers disabled, zone disabled (default)
-    # (uses default ZoneStyleConfig())
-
-    # FullVolumeZone: all layers disabled, zone ENABLED
-    zone_styles["FullVolumeZone"] = ZoneStyleConfig(zone_enabled=True)
-
-    # Atoms: scatter only, sphere, size from log formula, color from hex mapping
-    zone_styles["Atoms"] = ZoneStyleConfig(
-        zone_enabled=True,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Sphere,
-            size_function=get_atom_size_from_aux_data,
-            color_function=get_atom_color_from_aux_data,
-            fill_mode=FillMode.UseSpecificColor,
-        ),
-    )
-
-    # CriticalPoints: scatter only, sphere, size 1, zone DISABLED
-    zone_styles["CriticalPoints"] = ZoneStyleConfig(
-        zone_enabled=False,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Sphere,
-            size=1.0,
-        ),
-    )
-
-    # CriticalPoints Nuclear: scatter only, sphere, white, size 4, zone ENABLED
-    zone_styles["CriticalPoints Nuclear"] = ZoneStyleConfig(
-        zone_enabled=True,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Sphere,
-            color=Color.White,
-            size=2.0,
-        ),
-    )
-
-    # CriticalPoints Bond: scatter only, sphere, red, size 2.5, zone ENABLED
-    zone_styles["CriticalPoints Bond"] = ZoneStyleConfig(
-        zone_enabled=True,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Sphere,
-            color=Color.Red,
-            size=1.0,
-        ),
-    )
-
-    # CriticalPoints Ring: scatter only, sphere, green, size 1, zone ENABLED
-    zone_styles["CriticalPoints Ring"] = ZoneStyleConfig(
-        zone_enabled=True,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Sphere,
-            color=Color.Green,
-            size=1.0,
-        ),
-    )
-
-    # CriticalPoints Cage: scatter only, octahedron, cyan, size 1, zone ENABLED
-    zone_styles["CriticalPoints Cage"] = ZoneStyleConfig(
-        zone_enabled=True,
-        scatter_config=ScatterConfig(
-            show=True,
-            symbol_shape=GeomShape.Octahedron,
-            color=Color.Cyan,
-            size=1.0,
-        ),
-    )
-
-    # AtomSphereData: contour + shade with color from atom data
-    zone_styles["AtomSphereData"] = ZoneStyleConfig(
-        zone_enabled=True,
-        contour_config=ContourConfig(show=True),
-        shade_config=ShadeConfig(
-            show=True,
-            color_function=get_atom_color_from_aux_data,
-        ),
-    )
-
-    # GradientPath: mesh only, size 0.2
-    zone_styles["GradientPath"] = ZoneStyleConfig(
-        zone_enabled=False,
-        mesh_config=MeshConfig(show=True, line_thickness=0.2),
-    )
-
-    # BondPath: mesh only, black, size 0.4
-    zone_styles["BondPath"] = ZoneStyleConfig(
-        zone_enabled=True,
-        mesh_config=MeshConfig(show=True, color=Color.Black, line_thickness=0.4),
-    )
     
-    zone_styles["RingPath"] = ZoneStyleConfig(
-        zone_enabled=False,
-        mesh_config=MeshConfig(show=True, color=Color.Green, line_thickness=0.4),
-    )
-    
-    zone_styles["CagePath"] = ZoneStyleConfig(
-        zone_enabled=False,
-        mesh_config=MeshConfig(show=True, color=Color.Cyan, line_thickness=0.4),
-    )
+    # Suspend Tecplot session to batch all changes before rendering
+    with tecplot.session.suspend():
+        # Create defaultdict with zone type style configurations
+        zone_styles = defaultdict(lambda: ZoneStyleConfig())
 
-    # CondensedBasinSurface: shade only, 50% translucent, disabled by default, color from CriticalPointIndex
-    zone_styles["CondensedBasinSurface"] = ZoneStyleConfig(
-        zone_enabled=False,
-        shade_config=ShadeConfig(
-            show=True,
-            color_function=get_color_for_critical_point_index,
-            translucency=0.5,
-        ),
-    )
+        # Define specific zone type configurations
+        # No ZoneType: all layers disabled, zone disabled (default)
+        # (uses default ZoneStyleConfig())
 
-    # CondensedBasinSphere: shade only, color from BasinIndex
-    zone_styles["CondensedBasinSphere"] = ZoneStyleConfig(
-        zone_enabled=False,
-        shade_config=ShadeConfig(
-            show=True,
-            color_function=get_color_for_basin_index,
-        ),
-    )
+        # FullVolumeZone: all layers disabled, zone ENABLED
+        zone_styles["FullVolumeZone"] = ZoneStyleConfig(zone_enabled=True)
 
-    # Get all zones
-    zones = list(dataset.zones())
-    print(f"Processing {len(zones)} zones...")
+        # Atoms: scatter only, sphere, size from log formula, color from hex mapping
+        zone_styles["Atoms"] = ZoneStyleConfig(
+            zone_enabled=True,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Sphere,
+                size_function=get_atom_size_from_aux_data,
+                color_function=get_atom_color_from_aux_data,
+                fill_mode=FillMode.UseSpecificColor,
+            ),
+        )
 
-    zone_type_counts = defaultdict(lambda: 0)
+        # CriticalPoints: scatter only, sphere, size 1, zone DISABLED
+        zone_styles["CriticalPoints"] = ZoneStyleConfig(
+            zone_enabled=False,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Sphere,
+                size=1.0,
+            ),
+        )
 
-    # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
-    condensed_basin_sphere_critical_indices = set()
-    for zone in zones:
-        try:
+        # CriticalPoints Nuclear: scatter only, sphere, white, size 4, zone ENABLED
+        zone_styles["CriticalPoints Nuclear"] = ZoneStyleConfig(
+            zone_enabled=True,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Sphere,
+                color=Color.White,
+                size=2.0,
+            ),
+        )
+
+        # CriticalPoints Bond: scatter only, sphere, red, size 2.5, zone ENABLED
+        zone_styles["CriticalPoints Bond"] = ZoneStyleConfig(
+            zone_enabled=True,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Sphere,
+                color=Color.Red,
+                size=1.0,
+            ),
+        )
+
+        # CriticalPoints Ring: scatter only, sphere, green, size 1, zone ENABLED
+        zone_styles["CriticalPoints Ring"] = ZoneStyleConfig(
+            zone_enabled=True,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Sphere,
+                color=Color.Green,
+                size=1.0,
+            ),
+        )
+
+        # CriticalPoints Cage: scatter only, octahedron, cyan, size 1, zone ENABLED
+        zone_styles["CriticalPoints Cage"] = ZoneStyleConfig(
+            zone_enabled=True,
+            scatter_config=ScatterConfig(
+                show=True,
+                symbol_shape=GeomShape.Octahedron,
+                color=Color.Cyan,
+                size=1.0,
+            ),
+        )
+
+        # AtomSphereData: contour + shade with color from atom data
+        zone_styles["AtomSphereData"] = ZoneStyleConfig(
+            zone_enabled=True,
+            contour_config=ContourConfig(show=True),
+            shade_config=ShadeConfig(
+                show=True,
+                color_function=get_atom_color_from_aux_data,
+            ),
+        )
+
+        # GradientPath: mesh only, size 0.2
+        zone_styles["GradientPath"] = ZoneStyleConfig(
+            zone_enabled=False,
+            mesh_config=MeshConfig(show=True, line_thickness=0.2),
+        )
+
+        # BondPath: mesh only, black, size 0.4
+        zone_styles["BondPath"] = ZoneStyleConfig(
+            zone_enabled=True,
+            mesh_config=MeshConfig(show=True, color=Color.Black, line_thickness=0.4),
+        )
+        
+        zone_styles["RingPath"] = ZoneStyleConfig(
+            zone_enabled=False,
+            mesh_config=MeshConfig(show=True, color=Color.Green, line_thickness=0.4),
+        )
+        
+        zone_styles["CagePath"] = ZoneStyleConfig(
+            zone_enabled=False,
+            mesh_config=MeshConfig(show=True, color=Color.Cyan, line_thickness=0.4),
+        )
+
+        # CondensedBasinSurface: shade only, 50% translucent, disabled by default, color from CriticalPointIndex
+        zone_styles["CondensedBasinSurface"] = ZoneStyleConfig(
+            zone_enabled=False,
+            shade_config=ShadeConfig(
+                show=True,
+                color_function=get_color_for_critical_point_index,
+                translucency=0.5,
+            ),
+        )
+
+        # CondensedBasinSphere: shade only, color from BasinIndex
+        zone_styles["CondensedBasinSphere"] = ZoneStyleConfig(
+            zone_enabled=False,
+            shade_config=ShadeConfig(
+                show=True,
+                color_function=get_color_for_basin_index,
+            ),
+        )
+
+        # Get all zones and zone names in bulk (more efficient than accessing zone.name in loop)
+        zones = list(dataset.zones())
+        zone_names = dataset.zone_names
+        print(f"Processing {len(zones)} zones...")
+
+        zone_type_counts = defaultdict(lambda: 0)
+        enabled_zones = []  # Collect zones to enable
+        disabled_zones = []  # Collect zones to disable
+
+        # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
+        condensed_basin_sphere_critical_indices = set()
+        for zone in zones:
+            # Cache aux_data as dictionary to avoid multiple lookups
+            aux_data_dict = zone.aux_data.as_dict() if zone.aux_data else {}
+            zone._aux_data_cache = aux_data_dict
             
-            zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
-        except (KeyError, AttributeError):
-            zone_type = None
+            zone_type = aux_data_dict.get("ZoneType")
 
-        if zone_type == "CondensedBasinSphere":
-            try:
-                critical_point_index = int(zone.aux_data["CriticalPointIndex"])
-                condensed_basin_sphere_critical_indices.add(critical_point_index)
-            except (ValueError, KeyError, AttributeError):
-                pass
+            if zone_type == "CondensedBasinSphere":
+                try:
+                    critical_point_index = int(aux_data_dict["CriticalPointIndex"])
+                    condensed_basin_sphere_critical_indices.add(critical_point_index)
+                except (ValueError, KeyError):
+                    pass
 
-    # Second pass: apply styles to each zone
-    start_time = time.perf_counter()
+        # Second pass: apply styles to each zone
+        start_time = time.perf_counter()
 
-    for zi, zone in enumerate(zones):
-        try:
-            zone_type = zone.aux_data["ZoneType"] if zone.aux_data else None
-        except (KeyError, AttributeError):
-            zone_type = None
+        for zi, zone in enumerate(zones):
+            # Get cached aux_data
+            aux_data_dict = zone._aux_data_cache
+            zone_type = aux_data_dict.get("ZoneType")
+
+            elapsed_time = time.perf_counter() - start_time
+            total_time = elapsed_time / (zi + 1) * len(zones)
+            zone_name = zone_names[zi] if zi < len(zone_names) else zone.name
+            print(f"Elapsed: {elapsed_time:.0f}s/{total_time:.0f}s, Zone {zi} of {len(zones)}: {zone_name}, ZoneType: {zone_type}")
+
+            zone_type_counts[zone_type] += 1
+
+            # Special handling: hide AtomSphereData zones if corresponding CondensedBasinSphere exists
+            if zone_type == "AtomSphereData":
+                try:
+                    critical_point_index = int(aux_data_dict["CriticalPointIndex"])
+                    if critical_point_index in condensed_basin_sphere_critical_indices:
+                        # Skip this zone - don't apply styling (it will remain disabled)
+                        print(f"  → Skipping (CondensedBasinSphere exists for CriticalPointIndex {critical_point_index})")
+                        continue
+                except (ValueError, KeyError):
+                    pass
+            
+            if zone_type == "GradientPath":
+                try:
+                    path_type = aux_data_dict["PathType"]
+                    if path_type in zone_styles:
+                        # Use the specific PathType style if defined
+                        zone_type = path_type
+                except KeyError:
+                    pass
+
+            # Get the style config for this zone type and collect enabled/disabled zones
+            config = zone_styles[zone_type]
+            if config.zone_enabled:
+                enabled_zones.append(zone)
+            else:
+                disabled_zones.append(zone)
+
+            # Apply the style config (skip per-zone visibility update since we'll do bulk update)
+            config.apply_zone_style(zone, skip_visibility=True)
 
         elapsed_time = time.perf_counter() - start_time
-        total_time = elapsed_time / (zi + 1) * len(zones)
-        print(f"Elapsed: {elapsed_time:.0f}s/{total_time:.0f}s, Zone {zi} of {len(zones)}: {zone.name}, ZoneType: {zone_type}")
+        print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")
 
-        zone_type_counts[zone_type] += 1
+        # Bulk update zone visibility: group zones and update plot.active_fieldmap_indices once
+        frame = tecplot.active_frame()
+        if frame is not None:
+            plot = frame.plot()
+            if plot is not None:
+                try:
+                    # Get all fieldmap indices for enabled zones
+                    active_indices = set()
+                    for zone in enabled_zones:
+                        try:
+                            idx = plot.fieldmap_index(zone)
+                            active_indices.add(idx)
+                        except Exception:
+                            pass
+                    
+                    # Update all active fieldmap indices at once
+                    plot.active_fieldmap_indices = list(active_indices)
+                except Exception as e:
+                    print(f"Warning: Could not bulk update zone visibility: {e}")
 
-        # Special handling: hide AtomSphereData zones if corresponding CondensedBasinSphere exists
-        if zone_type == "AtomSphereData":
-            try:
-                critical_point_index = int(zone.aux_data["CriticalPointIndex"])
-                if critical_point_index in condensed_basin_sphere_critical_indices:
-                    # Skip this zone - don't apply styling (it will remain disabled)
-                    print(f"  → Skipping (CondensedBasinSphere exists for CriticalPointIndex {critical_point_index})")
-                    continue
-            except (ValueError, KeyError, AttributeError):
-                pass
-        
-        if zone_type == "GradientPath":
-            try:
-                path_type = zone.aux_data["PathType"]
-                if path_type in zone_styles:
-                    # Use the specific PathType style if defined
-                    zone_type = path_type
-            except (KeyError, AttributeError):
-                pass
+        # Activate layers that are in use by any enabled zone
+        frame = tecplot.active_frame()
+        if frame is not None:
+            plot = frame.plot()
+            if plot is not None:
+                # Check which layers are in use by enabled zones
+                layers_in_use = {
+                    "scatter": False,
+                    "mesh": False,
+                    "contour": False,
+                    "shade": False,
+                    "vector": False,
+                    "edge": False,
+                }
 
-        # Get and apply the style config for this zone type
-        zone_styles[zone_type].apply_zone_style(zone)
+                for zone_type, config in zone_styles.items():
+                    if zone_type_counts[zone_type] > 0 and config.zone_enabled:
+                        layers_in_use["scatter"] |= config.scatter_config.show
+                        layers_in_use["mesh"] |= config.mesh_config.show
+                        layers_in_use["contour"] |= config.contour_config.show
+                        layers_in_use["shade"] |= config.shade_config.show
+                        layers_in_use["vector"] |= config.vector_config.show
+                        layers_in_use["edge"] |= config.edge_config.show
 
-    elapsed_time = time.perf_counter() - start_time
-    print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")
+                # Activate plot-level layers that are in use
+                plot.show_scatter = layers_in_use["scatter"]
+                plot.show_mesh = layers_in_use["mesh"]
+                plot.show_contour = layers_in_use["contour"]
+                plot.show_shade = layers_in_use["shade"]
+                plot.show_vector = layers_in_use["vector"]
+                plot.show_edge = layers_in_use["edge"]
 
-    # Activate layers that are in use by any enabled zone
-    frame = tecplot.active_frame()
-    if frame is not None:
-        plot = frame.plot()
-        if plot is not None:
-            # Check which layers are in use by enabled zones
-            layers_in_use = {
-                "scatter": False,
-                "mesh": False,
-                "contour": False,
-                "shade": False,
-                "vector": False,
-                "edge": False,
-            }
+                print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
 
-            for zone_type, config in zone_styles.items():
-                if zone_type_counts[zone_type] > 0 and config.zone_enabled:
-                    layers_in_use["scatter"] |= config.scatter_config.show
-                    layers_in_use["mesh"] |= config.mesh_config.show
-                    layers_in_use["contour"] |= config.contour_config.show
-                    layers_in_use["shade"] |= config.shade_config.show
-                    layers_in_use["vector"] |= config.vector_config.show
-                    layers_in_use["edge"] |= config.edge_config.show
-
-            # Activate plot-level layers that are in use
-            plot.show_scatter = layers_in_use["scatter"]
-            plot.show_mesh = layers_in_use["mesh"]
-            plot.show_contour = layers_in_use["contour"]
-            plot.show_shade = layers_in_use["shade"]
-            plot.show_vector = layers_in_use["vector"]
-            plot.show_edge = layers_in_use["edge"]
-
-            print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
-
-    print("Zone styling complete.")
+        print("Zone styling complete.")
 
 
 if __name__ == "__main__":

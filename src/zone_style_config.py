@@ -390,12 +390,13 @@ class ZoneStyleConfig:
         self.vector_config = vector_config or VectorConfig()
         self.edge_config = edge_config or EdgeConfig()
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, skip_visibility=False):
         """
         Apply all style configurations to a zone.
 
         Args:
             zone: The tecplot Zone object to apply styling to.
+            skip_visibility: If True, skip zone visibility update (use when bulk-updating separately).
         """
         try:
             # Apply each layer configuration
@@ -407,28 +408,30 @@ class ZoneStyleConfig:
             self.edge_config.apply_zone_style(zone)
 
             # Set zone visibility by controlling fieldmap active status
-            frame = tecplot.active_frame()
-            if frame is None:
-                return
+            # (skip if bulk-updating visibility separately)
+            if not skip_visibility:
+                frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            plot = frame.plot()
-            if plot is None:
-                return
+                plot = frame.plot()
+                if plot is None:
+                    return
 
-            try:
-                fieldmap_index = plot.fieldmap_index(zone)
-                current_active = set(plot.active_fieldmap_indices)
+                try:
+                    fieldmap_index = plot.fieldmap_index(zone)
+                    current_active = set(plot.active_fieldmap_indices)
 
-                if self.zone_enabled:
-                    # Add this zone's fieldmap to active set
-                    current_active.add(fieldmap_index)
-                else:
-                    # Remove this zone's fieldmap from active set
-                    current_active.discard(fieldmap_index)
+                    if self.zone_enabled:
+                        # Add this zone's fieldmap to active set
+                        current_active.add(fieldmap_index)
+                    else:
+                        # Remove this zone's fieldmap from active set
+                        current_active.discard(fieldmap_index)
 
-                plot.active_fieldmap_indices = list(current_active)
-            except Exception:
-                # If fieldmap_index fails, skip zone visibility control
-                pass
+                    plot.active_fieldmap_indices = list(current_active)
+                except Exception:
+                    # If fieldmap_index fails, skip zone visibility control
+                    pass
         except Exception as e:
             print(f"Error applying zone style to zone {zone.name}: {e}")
