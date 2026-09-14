@@ -389,8 +389,8 @@ def apply_zone_styles():
         zone_names = dataset.zone_names
         print(f"Processing {len(zones)} zones...")
 
-        enabled_zones = []  # Collect zones to enable
-        disabled_zones = []  # Collect zones to disable
+        enabled_indices = set()  # Collect fieldmap indices of enabled zones
+        disabled_indices = set()  # Collect fieldmap indices of disabled zones
 
         # Track which plot-level layers are needed by actually-enabled zones.
         # Accumulated during the per-zone pass using the effective style config
@@ -405,12 +405,26 @@ def apply_zone_styles():
             "edge": False,
         }
 
+        # Get frame and plot once for fieldmap lookups (more efficient than per-zone)
+        frame = tecplot.active_frame()
+        plot = frame.plot() if frame is not None else None
+
         # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
+        # Also pre-compute and cache fieldmap indices for all zones
         condensed_basin_sphere_critical_indices = set()
         for zone in zones:
             # Cache aux_data as dictionary to avoid multiple lookups
             aux_data_dict = zone.aux_data.as_dict() if zone.aux_data else {}
             zone._aux_data_cache = aux_data_dict
+            
+            # Pre-compute fieldmap index for this zone (avoid per-zone lookup later)
+            if plot is not None:
+                try:
+                    zone._fieldmap_index = plot.fieldmap_index(zone)
+                except Exception:
+                    zone._fieldmap_index = None
+            else:
+                zone._fieldmap_index = None
             
             zone_type = aux_data_dict.get("ZoneType")
 
@@ -454,10 +468,12 @@ def apply_zone_styles():
                 except KeyError:
                     pass
 
-            # Get the style config for this zone type and collect enabled/disabled zones
+            # Get the style config for this zone type and collect enabled/disabled fieldmap indices
             config = zone_styles[zone_type]
             if config.zone_enabled:
-                enabled_zones.append(zone)
+                # Collect fieldmap index for bulk visibility update
+                if zone._fieldmap_index is not None:
+                    enabled_indices.add(zone._fieldmap_index)
                 # Accumulate layer usage from the effective config so plot-level
                 # layers are activated for every enabled zone.
                 layers_in_use["scatter"] |= config.scatter_config.show
@@ -467,7 +483,9 @@ def apply_zone_styles():
                 layers_in_use["vector"] |= config.vector_config.show
                 layers_in_use["edge"] |= config.edge_config.show
             else:
-                disabled_zones.append(zone)
+                # Collect fieldmap index for bulk visibility update
+                if zone._fieldmap_index is not None:
+                    disabled_indices.add(zone._fieldmap_index)
 
             # Apply the style config (skip per-zone visibility update since we'll do bulk update)
             config.apply_zone_style(zone, skip_visibility=True)
@@ -475,40 +493,25 @@ def apply_zone_styles():
         elapsed_time = time.perf_counter() - start_time
         print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")
 
-        # Bulk update zone visibility: group zones and update plot.active_fieldmap_indices once
-        frame = tecplot.active_frame()
-        if frame is not None:
-            plot = frame.plot()
-            if plot is not None:
-                try:
-                    # Get all fieldmap indices for enabled zones
-                    active_indices = set()
-                    for zone in enabled_zones:
-                        try:
-                            idx = plot.fieldmap_index(zone)
-                            active_indices.add(idx)
-                        except Exception:
-                            pass
-                    
-                    # Update all active fieldmap indices at once
-                    plot.active_fieldmap_indices = list(active_indices)
-                except Exception as e:
-                    print(f"Warning: Could not bulk update zone visibility: {e}")
+        # Bulk update zone visibility using pre-computed fieldmap indices
+        if plot is not None:
+            try:
+                # Update all active fieldmap indices at once (using pre-computed set)
+                plot.active_fieldmap_indices = enabled_indices
+            except Exception as e:
+                print(f"Warning: Could not bulk update zone visibility: {e}")
 
         # Activate layers that are in use by any enabled zone
-        frame = tecplot.active_frame()
-        if frame is not None:
-            plot = frame.plot()
-            if plot is not None:
-                # Activate plot-level layers accumulated from enabled zones
-                plot.show_scatter = layers_in_use["scatter"]
-                plot.show_mesh = layers_in_use["mesh"]
-                plot.show_contour = layers_in_use["contour"]
-                plot.show_shade = layers_in_use["shade"]
-                plot.show_vector = layers_in_use["vector"]
-                plot.show_edge = layers_in_use["edge"]
+        if plot is not None:
+            # Activate plot-level layers accumulated from enabled zones
+            plot.show_scatter = layers_in_use["scatter"]
+            plot.show_mesh = layers_in_use["mesh"]
+            plot.show_contour = layers_in_use["contour"]
+            plot.show_shade = layers_in_use["shade"]
+            plot.show_vector = layers_in_use["vector"]
+            plot.show_edge = layers_in_use["edge"]
 
-                print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
+            print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
 
         print("Zone styling complete.")
 
