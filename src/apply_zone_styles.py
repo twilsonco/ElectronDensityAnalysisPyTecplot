@@ -389,9 +389,21 @@ def apply_zone_styles():
         zone_names = dataset.zone_names
         print(f"Processing {len(zones)} zones...")
 
-        zone_type_counts = defaultdict(lambda: 0)
         enabled_zones = []  # Collect zones to enable
         disabled_zones = []  # Collect zones to disable
+
+        # Track which plot-level layers are needed by actually-enabled zones.
+        # Accumulated during the per-zone pass using the effective style config
+        # (important for GradientPath zones remapped via PathType, e.g. BondPath,
+        # which would be missed if derived from ZoneType counts alone).
+        layers_in_use = {
+            "scatter": False,
+            "mesh": False,
+            "contour": False,
+            "shade": False,
+            "vector": False,
+            "edge": False,
+        }
 
         # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
         condensed_basin_sphere_critical_indices = set()
@@ -422,8 +434,6 @@ def apply_zone_styles():
             zone_name = zone_names[zi] if zi < len(zone_names) else zone.name
             print(f"Elapsed: {elapsed_time:.0f}s/{total_time:.0f}s, Zone {zi} of {len(zones)}: {zone_name}, ZoneType: {zone_type}")
 
-            zone_type_counts[zone_type] += 1
-
             # Special handling: hide AtomSphereData zones if corresponding CondensedBasinSphere exists
             if zone_type == "AtomSphereData":
                 try:
@@ -448,6 +458,14 @@ def apply_zone_styles():
             config = zone_styles[zone_type]
             if config.zone_enabled:
                 enabled_zones.append(zone)
+                # Accumulate layer usage from the effective config so plot-level
+                # layers are activated for every enabled zone.
+                layers_in_use["scatter"] |= config.scatter_config.show
+                layers_in_use["mesh"] |= config.mesh_config.show
+                layers_in_use["contour"] |= config.contour_config.show
+                layers_in_use["shade"] |= config.shade_config.show
+                layers_in_use["vector"] |= config.vector_config.show
+                layers_in_use["edge"] |= config.edge_config.show
             else:
                 disabled_zones.append(zone)
 
@@ -482,26 +500,7 @@ def apply_zone_styles():
         if frame is not None:
             plot = frame.plot()
             if plot is not None:
-                # Check which layers are in use by enabled zones
-                layers_in_use = {
-                    "scatter": False,
-                    "mesh": False,
-                    "contour": False,
-                    "shade": False,
-                    "vector": False,
-                    "edge": False,
-                }
-
-                for zone_type, config in zone_styles.items():
-                    if zone_type_counts[zone_type] > 0 and config.zone_enabled:
-                        layers_in_use["scatter"] |= config.scatter_config.show
-                        layers_in_use["mesh"] |= config.mesh_config.show
-                        layers_in_use["contour"] |= config.contour_config.show
-                        layers_in_use["shade"] |= config.shade_config.show
-                        layers_in_use["vector"] |= config.vector_config.show
-                        layers_in_use["edge"] |= config.edge_config.show
-
-                # Activate plot-level layers that are in use
+                # Activate plot-level layers accumulated from enabled zones
                 plot.show_scatter = layers_in_use["scatter"]
                 plot.show_mesh = layers_in_use["mesh"]
                 plot.show_contour = layers_in_use["contour"]
