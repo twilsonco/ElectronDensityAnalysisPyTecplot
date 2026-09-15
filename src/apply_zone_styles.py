@@ -487,8 +487,9 @@ def apply_zone_styles():
                 if zone._fieldmap_index is not None:
                     disabled_indices.add(zone._fieldmap_index)
 
-            # Apply the style config (skip per-zone visibility update since we'll do bulk update)
-            config.apply_zone_style(zone, skip_visibility=True)
+            # Apply the style config with cached fieldmap index (skip per-zone visibility update since we'll do bulk update)
+            # Pass zone._fieldmap_index if available to avoid per-layer fieldmap lookups
+            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
 
         elapsed_time = time.perf_counter() - start_time
         print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")

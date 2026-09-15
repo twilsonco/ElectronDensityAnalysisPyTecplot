@@ -22,12 +22,14 @@ class StyleConfig(ABC):
     """
 
     @abstractmethod
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """
         Apply this style configuration to a zone's fieldmap layer.
 
         Args:
             zone: The tecplot Zone object to apply styling to.
+            fieldmap_index: Optional pre-computed fieldmap index to avoid lookup overhead.
+                           If provided, uses plot.fieldmap(fieldmap_index) instead of plot.fieldmap(zone).
         """
         pass
 
@@ -71,7 +73,7 @@ class ScatterConfig(StyleConfig):
         self.size_function = size_function
         self.color_function = color_function
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply scatter styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -82,7 +84,11 @@ class ScatterConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             scatter = fieldmap.scatter
 
             scatter.show = self.show
@@ -152,7 +158,7 @@ class MeshConfig(StyleConfig):
         self.pattern_length = pattern_length
         self.color_function = color_function
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply mesh styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -163,7 +169,11 @@ class MeshConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             mesh = fieldmap.mesh
 
             mesh.show = self.show
@@ -205,7 +215,7 @@ class ContourConfig(StyleConfig):
         self.show = show
         self.translucency = translucency
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply contour styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -216,7 +226,11 @@ class ContourConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             contour = fieldmap.contour
 
             contour.show = self.show
@@ -252,7 +266,7 @@ class ShadeConfig(StyleConfig):
         self.color_function = color_function
         self.translucency = translucency
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply shade styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -263,7 +277,11 @@ class ShadeConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             shade = fieldmap.shade
 
             shade.show = self.show
@@ -299,7 +317,7 @@ class VectorConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply vector styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -310,7 +328,11 @@ class VectorConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             vector = fieldmap.vector
 
             vector.show = self.show
@@ -330,7 +352,7 @@ class EdgeConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone):
+    def apply_zone_style(self, zone, fieldmap_index=None):
         """Apply edge styling to a zone."""
         try:
             frame = tecplot.active_frame()
@@ -341,7 +363,11 @@ class EdgeConfig(StyleConfig):
             if plot is None:
                 return
 
-            fieldmap = plot.fieldmap(zone)
+            # Use cached fieldmap index if provided, otherwise look up by zone
+            if fieldmap_index is not None:
+                fieldmap = plot.fieldmap(fieldmap_index)
+            else:
+                fieldmap = plot.fieldmap(zone)
             edge = fieldmap.edge
 
             edge.show = self.show
@@ -390,22 +416,24 @@ class ZoneStyleConfig:
         self.vector_config = vector_config or VectorConfig()
         self.edge_config = edge_config or EdgeConfig()
 
-    def apply_zone_style(self, zone, skip_visibility=False):
+    def apply_zone_style(self, zone, skip_visibility=False, fieldmap_index=None):
         """
         Apply all style configurations to a zone.
 
         Args:
             zone: The tecplot Zone object to apply styling to.
             skip_visibility: If True, skip zone visibility update (use when bulk-updating separately).
+            fieldmap_index: Optional pre-computed fieldmap index to pass to layer configs.
+                           Avoids redundant fieldmap lookups in each layer.
         """
         try:
-            # Apply each layer configuration
-            self.scatter_config.apply_zone_style(zone)
-            self.mesh_config.apply_zone_style(zone)
-            self.contour_config.apply_zone_style(zone)
-            self.shade_config.apply_zone_style(zone)
-            self.vector_config.apply_zone_style(zone)
-            self.edge_config.apply_zone_style(zone)
+            # Apply each layer configuration with cached fieldmap index to eliminate per-layer lookups
+            self.scatter_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            self.mesh_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            self.contour_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            self.shade_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            self.vector_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            self.edge_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
 
             # Set zone visibility by controlling fieldmap active status
             # (skip if bulk-updating visibility separately)
