@@ -463,3 +463,114 @@ class ZoneStyleConfig:
                     pass
         except Exception as e:
             print(f"Error applying zone style to zone {zone.name}: {e}")
+
+    def apply_zone_style_bulk(self, fieldmap_indices):
+        """
+        Apply style configuration to multiple fieldmaps at once using bulk operations.
+
+        This method applies the configuration to a collection of fieldmaps, which is
+        more efficient than applying to individual fieldmaps when multiple zones share
+        the same configuration. No visibility changes are made (assumed to be handled
+        separately via plot.active_fieldmap_indices).
+
+        Args:
+            fieldmap_indices: Iterable of fieldmap indices to apply styling to.
+                            Should be non-empty; no-op if empty.
+        """
+        if not fieldmap_indices:
+            return
+
+        try:
+            frame = tecplot.active_frame()
+            if frame is None:
+                return
+
+            plot = frame.plot()
+            if plot is None:
+                return
+
+            # Get fieldmap collection for the provided indices
+            fieldmap_collection = plot.fieldmaps(*fieldmap_indices)
+
+            # Apply each layer configuration to the entire collection
+            # For bulk operations, properties are set on the collection directly
+            try:
+                fieldmap_collection.scatter.show = self.scatter_config.show
+                if self.scatter_config.symbol_shape is not None:
+                    fieldmap_collection.scatter.symbol_type = SymbolType.Geometry
+                    fieldmap_collection.scatter.symbol().shape = self.scatter_config.symbol_shape
+                if self.scatter_config.color is not None:
+                    fieldmap_collection.scatter.color = self.scatter_config.color
+                if self.scatter_config.fill_color is not None:
+                    fieldmap_collection.scatter.fill_color = self.scatter_config.fill_color
+                if self.scatter_config.fill_mode is not None:
+                    fieldmap_collection.scatter.fill_mode = self.scatter_config.fill_mode
+                if self.scatter_config.line_thickness is not None:
+                    fieldmap_collection.scatter.line_thickness = self.scatter_config.line_thickness
+                if self.scatter_config.size is not None:
+                    fieldmap_collection.scatter.size = self.scatter_config.size
+            except Exception as e:
+                print(f"Warning: Could not apply scatter settings to fieldmap collection: {e}")
+
+            try:
+                fieldmap_collection.mesh.show = self.mesh_config.show
+                if self.mesh_config.color is not None:
+                    fieldmap_collection.mesh.color = self.mesh_config.color
+                if self.mesh_config.line_thickness is not None:
+                    fieldmap_collection.mesh.line_thickness = self.mesh_config.line_thickness
+                if self.mesh_config.mesh_type is not None:
+                    fieldmap_collection.mesh.mesh_type = self.mesh_config.mesh_type
+                if self.mesh_config.line_pattern is not None:
+                    fieldmap_collection.mesh.line_pattern = self.mesh_config.line_pattern
+                if self.mesh_config.pattern_length is not None:
+                    fieldmap_collection.mesh.pattern_length = self.mesh_config.pattern_length
+            except Exception as e:
+                print(f"Warning: Could not apply mesh settings to fieldmap collection: {e}")
+
+            try:
+                fieldmap_collection.contour.show = self.contour_config.show
+                if self.contour_config.color is not None:
+                    fieldmap_collection.contour.color = self.contour_config.color
+                if self.contour_config.line_thickness is not None:
+                    fieldmap_collection.contour.line_thickness = self.contour_config.line_thickness
+                if self.contour_config.colormap is not None:
+                    fieldmap_collection.contour.colormap_name = self.contour_config.colormap
+                if self.contour_config.contour_levels is not None:
+                    try:
+                        fieldmap_collection.contour.contour_levels = self.contour_config.contour_levels
+                    except:
+                        pass  # Silently skip if contour levels assignment fails
+            except Exception as e:
+                print(f"Warning: Could not apply contour settings to fieldmap collection: {e}")
+
+            try:
+                fieldmap_collection.shade.show = self.shade_config.show
+                if self.shade_config.colormap is not None:
+                    fieldmap_collection.shade.colormap_name = self.shade_config.colormap
+                if self.shade_config.variable is not None:
+                    try:
+                        fieldmap_collection.shade.variable = self.shade_config.variable
+                    except:
+                        pass  # Silently skip if variable assignment fails
+                if self.shade_config.translucency is not None:
+                    try:
+                        fieldmap_collection.effects.use_translucency = True
+                        translucency_percent = int(self.shade_config.translucency * 100) if self.shade_config.translucency <= 1.0 else int(self.shade_config.translucency)
+                        fieldmap_collection.effects.surface_translucency = translucency_percent
+                    except:
+                        pass  # Silently skip if translucency setting fails
+            except Exception as e:
+                print(f"Warning: Could not apply shade settings to fieldmap collection: {e}")
+
+            try:
+                fieldmap_collection.vector.show = self.vector_config.show
+            except Exception as e:
+                print(f"Warning: Could not apply vector settings to fieldmap collection: {e}")
+
+            try:
+                fieldmap_collection.edge.show = self.edge_config.show
+            except Exception as e:
+                print(f"Warning: Could not apply edge settings to fieldmap collection: {e}")
+
+        except Exception as e:
+            print(f"Error applying zone style bulk to fieldmap collection: {e}")

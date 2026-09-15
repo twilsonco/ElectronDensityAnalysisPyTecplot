@@ -536,20 +536,43 @@ def apply_zone_styles():
             config = zone_styles[zone_type]
             config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
             if (i + 1) % max(1, len(group_b_zones) // 10) == 0 or i == len(group_b_zones) - 1:
-                print(f"  Group B: {i + 1}/{len(group_b_zones)} zones styled")
+                elapsed = time.perf_counter() - start_time
+                rate = (i + 1) / elapsed if elapsed > 0 else 0
+                remaining = (len(group_b_zones) - (i + 1)) / rate if rate > 0 else 0
+                print(f"  Group B: {i + 1}/{len(group_b_zones)} zones styled ({elapsed:.1f}s elapsed, {remaining:.1f}s remaining)")
 
         elapsed_time = time.perf_counter() - start_time
         print(f"Applied Group B styling in {elapsed_time:.2f} seconds")
 
-        # Apply styling to Group A zones (constant configs can use bulk operations)
+        # Phase 4: Apply styling to Group A zones using bulk fieldmap operations
+        # Group zones by config identity to batch zones with identical configurations
         start_time = time.perf_counter()
-        for i, (zone, config) in enumerate(group_a_zones):
-            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
-            if (i + 1) % max(1, len(group_a_zones) // 10) == 0 or i == len(group_a_zones) - 1:
-                print(f"  Group A: {i + 1}/{len(group_a_zones)} zones styled")
+        config_groups = defaultdict(list)
+        for zone, config in group_a_zones:
+            config_groups[id(config)].append((zone, config))
+
+        # Process each config group with bulk operations
+        zones_processed = 0
+        for config_id, zone_config_list in config_groups.items():
+            if not zone_config_list:
+                continue
+
+            config = zone_config_list[0][1]  # Get the config object
+            fieldmap_indices = [zone._fieldmap_index for zone, _ in zone_config_list]
+
+            # Apply bulk styling to all zones with this config
+            config.apply_zone_style_bulk(fieldmap_indices)
+            zones_processed += len(zone_config_list)
+
+            # Update progress (per config group instead of per zone)
+            if zones_processed % max(1, len(group_a_zones) // 10) <= len(zone_config_list):
+                elapsed = time.perf_counter() - start_time
+                rate = zones_processed / elapsed if elapsed > 0 else 0
+                remaining = (len(group_a_zones) - zones_processed) / rate if rate > 0 else 0
+                print(f"  Group A: {zones_processed}/{len(group_a_zones)} zones styled ({elapsed:.1f}s elapsed, {remaining:.1f}s remaining)")
 
         elapsed_time = time.perf_counter() - start_time
-        print(f"Applied Group A styling in {elapsed_time:.2f} seconds")
+        print(f"Applied Group A styling (bulk) in {elapsed_time:.2f} seconds")
 
         # Bulk update zone visibility using pre-computed fieldmap indices
         if plot is not None:
