@@ -241,6 +241,27 @@ def get_color_for_basin_index(zone):
         return None
 
 
+def has_computed_properties(config):
+    """
+    Check if a ZoneStyleConfig has any computed properties (color/size functions).
+    
+    Zones with computed properties must use per-zone styling and cannot be
+    bulk-styled using fieldmap collections.
+    
+    Args:
+        config: ZoneStyleConfig instance
+        
+    Returns:
+        bool: True if config has any color_function or size_function
+    """
+    return (
+        (config.scatter_config.color_function is not None) or
+        (config.scatter_config.size_function is not None) or
+        (config.mesh_config.color_function is not None) or
+        (config.shade_config.color_function is not None)
+    )
+
+
 def apply_zone_styles():
     """
     Apply zone styling to the currently loaded dataset.
@@ -405,6 +426,12 @@ def apply_zone_styles():
             "edge": False,
         }
 
+        # Group zones by whether they have computed properties for optimized bulk operations
+        # Group A (constant configs): zones with no computed properties → can use bulk fieldmap operations
+        # Group B (computed properties): zones with color/size functions → must use per-zone styling
+        group_a_zones = []  # Constant-config zones (optimizable for bulk operations)
+        group_b_zones = []  # Computed-property zones (must use per-zone styling)
+
         # Get frame and plot once for fieldmap lookups (more efficient than per-zone)
         frame = tecplot.active_frame()
         plot = frame.plot() if frame is not None else None
@@ -442,11 +469,6 @@ def apply_zone_styles():
             # Get cached aux_data
             aux_data_dict = zone._aux_data_cache
             zone_type = aux_data_dict.get("ZoneType")
-
-            elapsed_time = time.perf_counter() - start_time
-            total_time = elapsed_time / (zi + 1) * len(zones)
-            zone_name = zone_names[zi] if zi < len(zone_names) else zone.name
-            print(f"Elapsed: {elapsed_time:.0f}s/{total_time:.0f}s, Zone {zi} of {len(zones)}: {zone_name}, ZoneType: {zone_type}")
 
             # Special handling: hide AtomSphereData zones if corresponding CondensedBasinSphere exists
             if zone_type == "AtomSphereData":
@@ -487,12 +509,47 @@ def apply_zone_styles():
                 if zone._fieldmap_index is not None:
                     disabled_indices.add(zone._fieldmap_index)
 
-            # Apply the style config with cached fieldmap index (skip per-zone visibility update since we'll do bulk update)
-            # Pass zone._fieldmap_index if available to avoid per-layer fieldmap lookups
-            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
+            # Route zones to appropriate group based on whether they have computed properties
+            if has_computed_properties(config):
+                # Group B: Zones with computed properties (must use per-zone styling)
+                group_b_zones.append(zone)
+            else:
+                # Group A: Zones with constant configs (can optimize with bulk operations)
+                group_a_zones.append((zone, config))
 
         elapsed_time = time.perf_counter() - start_time
-        print(f"Processed {len(zones)} zones in {elapsed_time:.2f} seconds")
+        print(f"Processed zone analysis in {elapsed_time:.2f} seconds")
+        print(f"  Group A (constant configs): {len(group_a_zones)} zones")
+        print(f"  Group B (computed properties): {len(group_b_zones)} zones")
+
+        # Apply styling to Group B zones first (computed properties require per-zone handling)
+        start_time = time.perf_counter()
+        for i, zone in enumerate(group_b_zones):
+            zone_type = zone._aux_data_cache.get("ZoneType")
+            if zone_type == "GradientPath":
+                try:
+                    path_type = zone._aux_data_cache["PathType"]
+                    if path_type in zone_styles:
+                        zone_type = path_type
+                except KeyError:
+                    pass
+            config = zone_styles[zone_type]
+            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
+            if (i + 1) % max(1, len(group_b_zones) // 10) == 0 or i == len(group_b_zones) - 1:
+                print(f"  Group B: {i + 1}/{len(group_b_zones)} zones styled")
+
+        elapsed_time = time.perf_counter() - start_time
+        print(f"Applied Group B styling in {elapsed_time:.2f} seconds")
+
+        # Apply styling to Group A zones (constant configs can use bulk operations)
+        start_time = time.perf_counter()
+        for i, (zone, config) in enumerate(group_a_zones):
+            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
+            if (i + 1) % max(1, len(group_a_zones) // 10) == 0 or i == len(group_a_zones) - 1:
+                print(f"  Group A: {i + 1}/{len(group_a_zones)} zones styled")
+
+        elapsed_time = time.perf_counter() - start_time
+        print(f"Applied Group A styling in {elapsed_time:.2f} seconds")
 
         # Bulk update zone visibility using pre-computed fieldmap indices
         if plot is not None:
