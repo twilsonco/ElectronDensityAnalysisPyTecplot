@@ -22,7 +22,7 @@ class StyleConfig(ABC):
     """
 
     @abstractmethod
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """
         Apply this style configuration to a zone's fieldmap layer.
 
@@ -30,6 +30,8 @@ class StyleConfig(ABC):
             zone: The tecplot Zone object to apply styling to.
             fieldmap_index: Optional pre-computed fieldmap index to avoid lookup overhead.
                            If provided, uses plot.fieldmap(fieldmap_index) instead of plot.fieldmap(zone).
+            frame: Optional pre-computed frame object to avoid active_frame() lookup.
+            plot: Optional pre-computed plot object to avoid frame.plot() lookup.
         """
         pass
 

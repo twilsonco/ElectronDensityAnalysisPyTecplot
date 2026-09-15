@@ -165,7 +165,9 @@ def get_atom_color_from_aux_data(zone):
         tecplot.constant.Color enum value, or None if not found
     """
     try:
-        color_hex = zone.aux_data["AtomColor"].strip()
+        # Use cached aux_data dict if available (avoids IPC round-trip), else fall back to zone.aux_data
+        aux_data = getattr(zone, '_aux_data_cache', zone.aux_data)
+        color_hex = aux_data["AtomColor"].strip()
         return get_closest_color_for_hex(color_hex)
     except (KeyError, AttributeError):
         return None
@@ -184,7 +186,9 @@ def get_atom_size_from_aux_data(zone):
         float: Calculated size, or None if AtomElementNumber not found
     """
     try:
-        atom_num = float(zone.aux_data["AtomElementNumber"])
+        # Use cached aux_data dict if available (avoids IPC round-trip), else fall back to zone.aux_data
+        aux_data = getattr(zone, '_aux_data_cache', zone.aux_data)
+        atom_num = float(aux_data["AtomElementNumber"])
         size = ATOM_MIN_SPHERE_SIZE + math.log(atom_num + 1)
         return size
     except (ValueError, KeyError, AttributeError):
@@ -461,6 +465,24 @@ def apply_zone_styles():
                     condensed_basin_sphere_critical_indices.add(critical_point_index)
                 except (ValueError, KeyError):
                     pass
+
+        # Phase 5: Batch-initialize all disabled layers on all fieldmaps
+        # Set all layers to OFF on all fieldmaps at once (6 bulk calls total)
+        # This avoids N*6 individual writes when styling zones per-zone
+        if plot is not None:
+            try:
+                all_fieldmap_indices = [z._fieldmap_index for z in zones if z._fieldmap_index is not None]
+                if all_fieldmap_indices:
+                    all_fieldmaps = plot.fieldmaps(*all_fieldmap_indices)
+                    # Disable all layers on all fieldmaps (6 bulk operations)
+                    all_fieldmaps.scatter.show = False
+                    all_fieldmaps.mesh.show = False
+                    all_fieldmaps.contour.show = False
+                    all_fieldmaps.shade.show = False
+                    all_fieldmaps.vector.show = False
+                    all_fieldmaps.edge.show = False
+            except Exception as e:
+                print(f"Warning: Could not batch-initialize disabled layers: {e}")
 
         # Second pass: apply styles to each zone
         start_time = time.perf_counter()
