@@ -556,7 +556,7 @@ def apply_zone_styles():
                 except KeyError:
                     pass
             config = zone_styles[zone_type]
-            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index)
+            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index, frame=frame, plot=plot)
             if (i + 1) % max(1, len(group_b_zones) // 10) == 0 or i == len(group_b_zones) - 1:
                 elapsed = time.perf_counter() - start_time
                 rate = (i + 1) / elapsed if elapsed > 0 else 0
@@ -583,7 +583,7 @@ def apply_zone_styles():
             fieldmap_indices = [zone._fieldmap_index for zone, _ in zone_config_list]
 
             # Apply bulk styling to all zones with this config
-            config.apply_zone_style_bulk(fieldmap_indices)
+            config.apply_zone_style_bulk(fieldmap_indices, plot=plot)
             zones_processed += len(zone_config_list)
 
             # Update progress (per config group instead of per zone)

@@ -75,14 +75,17 @@ class ScatterConfig(StyleConfig):
         self.size_function = size_function
         self.color_function = color_function
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply scatter styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -160,14 +163,17 @@ class MeshConfig(StyleConfig):
         self.pattern_length = pattern_length
         self.color_function = color_function
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply mesh styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -217,14 +223,17 @@ class ContourConfig(StyleConfig):
         self.show = show
         self.translucency = translucency
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply contour styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -268,14 +277,17 @@ class ShadeConfig(StyleConfig):
         self.color_function = color_function
         self.translucency = translucency
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply shade styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -319,14 +331,17 @@ class VectorConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply vector styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -354,14 +369,17 @@ class EdgeConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone, fieldmap_index=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
         """Apply edge styling to a zone."""
         try:
-            frame = tecplot.active_frame()
+            # Use provided frame/plot or look them up (frame/plot cached for performance)
+            if frame is None:
+                frame = tecplot.active_frame()
             if frame is None:
                 return
 
-            plot = frame.plot()
+            if plot is None:
+                plot = frame.plot()
             if plot is None:
                 return
 
@@ -418,7 +436,7 @@ class ZoneStyleConfig:
         self.vector_config = vector_config or VectorConfig()
         self.edge_config = edge_config or EdgeConfig()
 
-    def apply_zone_style(self, zone, skip_visibility=False, fieldmap_index=None):
+    def apply_zone_style(self, zone, skip_visibility=False, fieldmap_index=None, frame=None, plot=None):
         """
         Apply all style configurations to a zone.
 
@@ -427,27 +445,27 @@ class ZoneStyleConfig:
             skip_visibility: If True, skip zone visibility update (use when bulk-updating separately).
             fieldmap_index: Optional pre-computed fieldmap index to pass to layer configs.
                            Avoids redundant fieldmap lookups in each layer.
+            frame: Optional pre-computed frame object to avoid active_frame() lookup.
+            plot: Optional pre-computed plot object to avoid frame.plot() lookup.
         """
         try:
-            # Apply each layer configuration with cached fieldmap index to eliminate per-layer lookups
-            self.scatter_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
-            self.mesh_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
-            self.contour_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
-            self.shade_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
-            self.vector_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
-            self.edge_config.apply_zone_style(zone, fieldmap_index=fieldmap_index)
+            # Use provided frame/plot or look them up once (avoids redundant lookups in each layer)
+            if frame is None:
+                frame = tecplot.active_frame()
+            if plot is None and frame is not None:
+                plot = frame.plot()
+
+            # Apply each layer configuration with cached fieldmap index and frame/plot to eliminate lookups
+            self.scatter_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            self.mesh_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            self.contour_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            self.shade_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            self.vector_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            self.edge_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
 
             # Set zone visibility by controlling fieldmap active status
             # (skip if bulk-updating visibility separately)
-            if not skip_visibility:
-                frame = tecplot.active_frame()
-                if frame is None:
-                    return
-
-                plot = frame.plot()
-                if plot is None:
-                    return
-
+            if not skip_visibility and plot is not None:
                 try:
                     fieldmap_index = plot.fieldmap_index(zone)
                     current_active = set(plot.active_fieldmap_indices)
@@ -466,7 +484,7 @@ class ZoneStyleConfig:
         except Exception as e:
             print(f"Error applying zone style to zone {zone.name}: {e}")
 
-    def apply_zone_style_bulk(self, fieldmap_indices):
+    def apply_zone_style_bulk(self, fieldmap_indices, plot=None):
         """
         Apply style configuration to multiple fieldmaps at once using bulk operations.
 
@@ -478,16 +496,19 @@ class ZoneStyleConfig:
         Args:
             fieldmap_indices: Iterable of fieldmap indices to apply styling to.
                             Should be non-empty; no-op if empty.
+            plot: Optional pre-computed plot object to avoid frame.plot() lookup.
         """
         if not fieldmap_indices:
             return
 
         try:
-            frame = tecplot.active_frame()
-            if frame is None:
-                return
-
-            plot = frame.plot()
+            # Use provided plot or look it up (plot cached for performance)
+            if plot is None:
+                frame = tecplot.active_frame()
+                if frame is None:
+                    return
+                plot = frame.plot()
+            
             if plot is None:
                 return
 
