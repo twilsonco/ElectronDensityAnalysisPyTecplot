@@ -552,36 +552,27 @@ class ZoneStyleConfig:
 
             try:
                 fieldmap_collection.contour.show = self.contour_config.show
-                if self.contour_config.color is not None:
-                    fieldmap_collection.contour.color = self.contour_config.color
-                if self.contour_config.line_thickness is not None:
-                    fieldmap_collection.contour.line_thickness = self.contour_config.line_thickness
-                if self.contour_config.colormap is not None:
-                    fieldmap_collection.contour.colormap_name = self.contour_config.colormap
-                if self.contour_config.contour_levels is not None:
+                if self.contour_config.translucency is not None:
                     try:
-                        fieldmap_collection.contour.contour_levels = self.contour_config.contour_levels
+                        fieldmap_collection.effects.use_translucency = True
+                        translucency_percent = int(self.contour_config.translucency * 100) if self.contour_config.translucency <= 1.0 else int(self.contour_config.translucency)
+                        fieldmap_collection.effects.surface_translucency = translucency_percent
                     except:
-                        pass  # Silently skip if contour levels assignment fails
+                        pass  # Silently skip if translucency assignment fails
             except Exception as e:
                 print(f"Warning: Could not apply contour settings to fieldmap collection: {e}")
 
             try:
                 fieldmap_collection.shade.show = self.shade_config.show
-                if self.shade_config.colormap is not None:
-                    fieldmap_collection.shade.colormap_name = self.shade_config.colormap
-                if self.shade_config.variable is not None:
-                    try:
-                        fieldmap_collection.shade.variable = self.shade_config.variable
-                    except:
-                        pass  # Silently skip if variable assignment fails
+                if self.shade_config.color is not None:
+                    fieldmap_collection.shade.color = self.shade_config.color
                 if self.shade_config.translucency is not None:
                     try:
                         fieldmap_collection.effects.use_translucency = True
                         translucency_percent = int(self.shade_config.translucency * 100) if self.shade_config.translucency <= 1.0 else int(self.shade_config.translucency)
                         fieldmap_collection.effects.surface_translucency = translucency_percent
                     except:
-                        pass  # Silently skip if translucency setting fails
+                        pass  # Silently skip if translucency assignment fails
             except Exception as e:
                 print(f"Warning: Could not apply shade settings to fieldmap collection: {e}")
 
