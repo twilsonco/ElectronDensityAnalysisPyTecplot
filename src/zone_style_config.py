@@ -127,7 +127,7 @@ class ScatterConfig(StyleConfig):
             elif self.size is not None:
                 scatter.size = self.size
         except Exception as e:
-            print(f"Error applying scatter style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class MeshConfig(StyleConfig):
@@ -206,7 +206,7 @@ class MeshConfig(StyleConfig):
             if self.pattern_length is not None:
                 mesh.pattern_length = self.pattern_length
         except Exception as e:
-            print(f"Error applying mesh style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class ContourConfig(StyleConfig):
@@ -254,7 +254,7 @@ class ContourConfig(StyleConfig):
                 translucency_percent = int(self.translucency * 100) if self.translucency <= 1.0 else int(self.translucency)
                 effects.surface_translucency = translucency_percent
         except Exception as e:
-            print(f"Error applying contour style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class ShadeConfig(StyleConfig):
@@ -316,7 +316,7 @@ class ShadeConfig(StyleConfig):
                 translucency_percent = int(self.translucency * 100) if self.translucency <= 1.0 else int(self.translucency)
                 effects.surface_translucency = translucency_percent
         except Exception as e:
-            print(f"Error applying shade style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class VectorConfig(StyleConfig):
@@ -354,7 +354,7 @@ class VectorConfig(StyleConfig):
 
             vector.show = self.show
         except Exception as e:
-            print(f"Error applying vector style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class EdgeConfig(StyleConfig):
@@ -392,7 +392,7 @@ class EdgeConfig(StyleConfig):
 
             edge.show = self.show
         except Exception as e:
-            print(f"Error applying edge style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
 
 class ZoneStyleConfig:
@@ -482,7 +482,7 @@ class ZoneStyleConfig:
                     # If fieldmap_index fails, skip zone visibility control
                     pass
         except Exception as e:
-            print(f"Error applying zone style to zone {zone.name}: {e}")
+            pass  # Silently skip on error (fieldmap may not exist for all zones)
 
     def apply_zone_style_bulk(self, fieldmap_indices, plot=None):
         """
