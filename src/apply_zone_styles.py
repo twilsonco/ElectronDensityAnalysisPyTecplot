@@ -280,6 +280,9 @@ def apply_zone_styles():
         print("No dataset loaded in the active frame.")
         return
     
+    # Start total wall time measurement
+    total_start_time = time.perf_counter()
+    
     # Suspend Tecplot session to batch all changes before rendering
     with tecplot.session.suspend():
         # Create defaultdict with zone type style configurations
@@ -443,6 +446,7 @@ def apply_zone_styles():
         # First pass: identify which CriticalPointIndex values have CondensedBasinSphere zones
         # Also pre-compute and cache fieldmap indices for all zones
         condensed_basin_sphere_critical_indices = set()
+        start_time = time.perf_counter()
         for zone in zones:
             # Cache aux_data as dictionary to avoid multiple lookups
             aux_data_dict = zone.aux_data.as_dict() if zone.aux_data else {}
@@ -465,6 +469,9 @@ def apply_zone_styles():
                     condensed_basin_sphere_critical_indices.add(critical_point_index)
                 except (ValueError, KeyError):
                     pass
+
+        elapsed_time = time.perf_counter() - start_time
+        print(f"Cached aux_data and computed fieldmap indices in {elapsed_time:.2f} seconds")
 
         # Phase 5: Batch-initialize all disabled layers on all fieldmaps
         # Set all layers to OFF on all fieldmaps at once (6 bulk calls total)
@@ -617,6 +624,9 @@ def apply_zone_styles():
             print(f"Layers activated: {[k for k,v in layers_in_use.items() if v]}")
 
         print("Zone styling complete.")
+        
+        total_elapsed_time = time.perf_counter() - total_start_time
+        print(f"Total time for apply_zone_styles(): {total_elapsed_time:.2f} seconds")
 
 
 if __name__ == "__main__":
