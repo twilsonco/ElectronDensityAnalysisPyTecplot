@@ -22,7 +22,8 @@ class StyleConfig(ABC):
     """
 
     @abstractmethod
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """
         Apply this style configuration to a zone's fieldmap layer.
 
@@ -32,6 +33,13 @@ class StyleConfig(ABC):
                            If provided, uses plot.fieldmap(fieldmap_index) instead of plot.fieldmap(zone).
             frame: Optional pre-computed frame object to avoid active_frame() lookup.
             plot: Optional pre-computed plot object to avoid frame.plot() lookup.
+            fieldmap: Optional pre-resolved fieldmap object. Each plot.fieldmap()
+                      call constructs a new object with RPC overhead in connected
+                      mode, so callers styling multiple layers should resolve the
+                      fieldmap once and pass it here.
+            assume_layers_off: If True, skip writing show=False (the caller has
+                      already disabled all layers in bulk). Each redundant
+                      write is an RPC round-trip in connected mode.
         """
         pass
 
@@ -75,28 +83,33 @@ class ScatterConfig(StyleConfig):
         self.size_function = size_function
         self.color_function = color_function
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply scatter styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             scatter = fieldmap.scatter
 
-            scatter.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                scatter.show = self.show
 
             if self.symbol_shape is not None:
                 scatter.symbol_type = SymbolType.Geometry
@@ -128,6 +141,35 @@ class ScatterConfig(StyleConfig):
                 scatter.size = self.size
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
+
+    def resolve_for_zone(self, zone):
+        """Return an equivalent config with computed color/size evaluated for this zone.
+
+        Used to bucket zones with identical resolved styles so they can be
+        styled together with bulk fieldmap operations.
+        """
+        color = self.color
+        if self.color_function is not None:
+            color = self.color_function(zone)
+        size = self.size
+        if self.size_function is not None:
+            size = self.size_function(zone)
+        return ScatterConfig(
+            show=self.show,
+            symbol_shape=self.symbol_shape,
+            color=color,
+            fill_color=self.fill_color,
+            fill_mode=self.fill_mode,
+            line_thickness=self.line_thickness,
+            size=size,
+        )
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return (
+            "scatter", self.show, self.symbol_shape, self.color,
+            self.fill_color, self.fill_mode, self.line_thickness, self.size,
+        )
 
 
 class MeshConfig(StyleConfig):
@@ -163,28 +205,33 @@ class MeshConfig(StyleConfig):
         self.pattern_length = pattern_length
         self.color_function = color_function
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply mesh styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             mesh = fieldmap.mesh
 
-            mesh.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                mesh.show = self.show
 
             # Color can be constant or computed via function
             if self.color_function is not None:
@@ -208,6 +255,27 @@ class MeshConfig(StyleConfig):
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
 
+    def resolve_for_zone(self, zone):
+        """Return an equivalent config with the computed color evaluated for this zone."""
+        color = self.color
+        if self.color_function is not None:
+            color = self.color_function(zone)
+        return MeshConfig(
+            show=self.show,
+            color=color,
+            line_thickness=self.line_thickness,
+            mesh_type=self.mesh_type,
+            line_pattern=self.line_pattern,
+            pattern_length=self.pattern_length,
+        )
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return (
+            "mesh", self.show, self.color, self.line_thickness,
+            self.mesh_type, self.line_pattern, self.pattern_length,
+        )
+
 
 class ContourConfig(StyleConfig):
     """Configuration for contour layer styling."""
@@ -223,28 +291,33 @@ class ContourConfig(StyleConfig):
         self.show = show
         self.translucency = translucency
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply contour styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             contour = fieldmap.contour
 
-            contour.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                contour.show = self.show
 
             # Handle translucency if specified
             if self.translucency is not None:
@@ -255,6 +328,14 @@ class ContourConfig(StyleConfig):
                 effects.surface_translucency = translucency_percent
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
+
+    def resolve_for_zone(self, zone):
+        """Return this config (contour styling has no computed values)."""
+        return self
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return ("contour", self.show, self.translucency)
 
 
 class ShadeConfig(StyleConfig):
@@ -277,28 +358,33 @@ class ShadeConfig(StyleConfig):
         self.color_function = color_function
         self.translucency = translucency
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply shade styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             shade = fieldmap.shade
 
-            shade.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                shade.show = self.show
 
             # Color can be constant or computed via function
             if self.color_function is not None:
@@ -318,6 +404,17 @@ class ShadeConfig(StyleConfig):
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
 
+    def resolve_for_zone(self, zone):
+        """Return an equivalent config with the computed color evaluated for this zone."""
+        color = self.color
+        if self.color_function is not None:
+            color = self.color_function(zone)
+        return ShadeConfig(show=self.show, color=color, translucency=self.translucency)
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return ("shade", self.show, self.color, self.translucency)
+
 
 class VectorConfig(StyleConfig):
     """Configuration for vector layer styling."""
@@ -331,30 +428,43 @@ class VectorConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply vector styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             vector = fieldmap.vector
 
-            vector.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                vector.show = self.show
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
+
+    def resolve_for_zone(self, zone):
+        """Return this config (vector styling has no computed values)."""
+        return self
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return ("vector", self.show)
 
 
 class EdgeConfig(StyleConfig):
@@ -369,30 +479,43 @@ class EdgeConfig(StyleConfig):
         """
         self.show = show
 
-    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None):
+    def apply_zone_style(self, zone, fieldmap_index=None, frame=None, plot=None,
+                         fieldmap=None, assume_layers_off=False):
         """Apply edge styling to a zone."""
         try:
-            # Use provided frame/plot or look them up (frame/plot cached for performance)
-            if frame is None:
-                frame = tecplot.active_frame()
-            if frame is None:
-                return
+            if fieldmap is None:
+                # Use provided frame/plot or look them up (frame/plot cached for performance)
+                if frame is None:
+                    frame = tecplot.active_frame()
+                if frame is None:
+                    return
 
-            if plot is None:
-                plot = frame.plot()
-            if plot is None:
-                return
+                if plot is None:
+                    plot = frame.plot()
+                if plot is None:
+                    return
 
-            # Use cached fieldmap index if provided, otherwise look up by zone
-            if fieldmap_index is not None:
-                fieldmap = plot.fieldmap(fieldmap_index)
-            else:
-                fieldmap = plot.fieldmap(zone)
+                # Use cached fieldmap index if provided, otherwise look up by zone
+                if fieldmap_index is not None:
+                    fieldmap = plot.fieldmap(fieldmap_index)
+                else:
+                    fieldmap = plot.fieldmap(zone)
             edge = fieldmap.edge
 
-            edge.show = self.show
+            # Skip redundant show=False writes when the caller already
+            # disabled all layers in bulk (each write is an RPC round-trip)
+            if self.show or not assume_layers_off:
+                edge.show = self.show
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
+
+    def resolve_for_zone(self, zone):
+        """Return this config (edge styling has no computed values)."""
+        return self
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing)."""
+        return ("edge", self.show)
 
 
 class ZoneStyleConfig:
@@ -435,8 +558,41 @@ class ZoneStyleConfig:
         self.shade_config = shade_config or ShadeConfig()
         self.vector_config = vector_config or VectorConfig()
         self.edge_config = edge_config or EdgeConfig()
+    def resolve_for_zone(self, zone):
+        """Return an equivalent config with all computed values evaluated for this zone.
 
-    def apply_zone_style(self, zone, skip_visibility=False, fieldmap_index=None, frame=None, plot=None):
+        The returned config has no color_function/size_function, so zones that
+        resolve to the same style_key can be styled together with a single bulk
+        fieldmap operation (computed values like atom colors repeat heavily,
+        e.g., all atoms of the same element share color and size).
+        """
+        return ZoneStyleConfig(
+            zone_enabled=self.zone_enabled,
+            scatter_config=self.scatter_config.resolve_for_zone(zone),
+            mesh_config=self.mesh_config.resolve_for_zone(zone),
+            contour_config=self.contour_config.resolve_for_zone(zone),
+            shade_config=self.shade_config.resolve_for_zone(zone),
+            vector_config=self.vector_config.resolve_for_zone(zone),
+            edge_config=self.edge_config.resolve_for_zone(zone),
+        )
+
+    def style_key(self):
+        """Hashable key identifying this config's constant style values (for bucketing).
+
+        Only valid on configs returned by resolve_for_zone() (or configs that
+        never had computed properties). Two configs with the same key apply
+        identical styling and can share one bulk operation.
+        """
+        return (
+            self.scatter_config.style_key(),
+            self.mesh_config.style_key(),
+            self.contour_config.style_key(),
+            self.shade_config.style_key(),
+            self.vector_config.style_key(),
+            self.edge_config.style_key(),
+        )
+    def apply_zone_style(self, zone, skip_visibility=False, fieldmap_index=None, frame=None, plot=None,
+                         assume_layers_off=False):
         """
         Apply all style configurations to a zone.
 
@@ -447,6 +603,8 @@ class ZoneStyleConfig:
                            Avoids redundant fieldmap lookups in each layer.
             frame: Optional pre-computed frame object to avoid active_frame() lookup.
             plot: Optional pre-computed plot object to avoid frame.plot() lookup.
+            assume_layers_off: If True, layer configs skip writing show=False
+                           (caller already disabled all layers in bulk).
         """
         try:
             # Use provided frame/plot or look them up once (avoids redundant lookups in each layer)
@@ -455,13 +613,33 @@ class ZoneStyleConfig:
             if plot is None and frame is not None:
                 plot = frame.plot()
 
-            # Apply each layer configuration with cached fieldmap index and frame/plot to eliminate lookups
-            self.scatter_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
-            self.mesh_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
-            self.contour_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
-            self.shade_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
-            self.vector_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
-            self.edge_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot)
+            # Resolve the fieldmap object ONCE per zone and share it across all
+            # layer configs. Each plot.fieldmap() call constructs a new object
+            # with RPC overhead in connected mode (6x per zone otherwise).
+            fieldmap = None
+            if plot is not None:
+                try:
+                    if fieldmap_index is not None:
+                        fieldmap = plot.fieldmap(fieldmap_index)
+                    else:
+                        fieldmap = plot.fieldmap(zone)
+                        fieldmap_index = fieldmap.index
+                except Exception:
+                    fieldmap = None
+
+            # Apply each layer configuration with the shared fieldmap object to eliminate lookups
+            self.scatter_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                                 fieldmap=fieldmap, assume_layers_off=assume_layers_off)
+            self.mesh_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                              fieldmap=fieldmap, assume_layers_off=assume_layers_off)
+            self.contour_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                                 fieldmap=fieldmap, assume_layers_off=assume_layers_off)
+            self.shade_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                               fieldmap=fieldmap, assume_layers_off=assume_layers_off)
+            self.vector_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                                fieldmap=fieldmap, assume_layers_off=assume_layers_off)
+            self.edge_config.apply_zone_style(zone, fieldmap_index=fieldmap_index, frame=frame, plot=plot,
+                                              fieldmap=fieldmap, assume_layers_off=assume_layers_off)
 
             # Set zone visibility by controlling fieldmap active status
             # (skip if bulk-updating visibility separately)
@@ -484,7 +662,7 @@ class ZoneStyleConfig:
         except Exception as e:
             pass  # Silently skip on error (fieldmap may not exist for all zones)
 
-    def apply_zone_style_bulk(self, fieldmap_indices, plot=None):
+    def apply_zone_style_bulk(self, fieldmap_indices, plot=None, assume_layers_off=False):
         """
         Apply style configuration to multiple fieldmaps at once using bulk operations.
 
@@ -497,6 +675,8 @@ class ZoneStyleConfig:
             fieldmap_indices: Iterable of fieldmap indices to apply styling to.
                             Should be non-empty; no-op if empty.
             plot: Optional pre-computed plot object to avoid frame.plot() lookup.
+            assume_layers_off: If True, skip writing show=False (caller already
+                            disabled all layers in bulk; each write is an RPC).
         """
         if not fieldmap_indices:
             return
@@ -518,7 +698,8 @@ class ZoneStyleConfig:
             # Apply each layer configuration to the entire collection
             # For bulk operations, properties are set on the collection directly
             try:
-                fieldmap_collection.scatter.show = self.scatter_config.show
+                if self.scatter_config.show or not assume_layers_off:
+                    fieldmap_collection.scatter.show = self.scatter_config.show
                 if self.scatter_config.symbol_shape is not None:
                     fieldmap_collection.scatter.symbol_type = SymbolType.Geometry
                     fieldmap_collection.scatter.symbol().shape = self.scatter_config.symbol_shape
@@ -536,7 +717,8 @@ class ZoneStyleConfig:
                 print(f"Warning: Could not apply scatter settings to fieldmap collection: {e}")
 
             try:
-                fieldmap_collection.mesh.show = self.mesh_config.show
+                if self.mesh_config.show or not assume_layers_off:
+                    fieldmap_collection.mesh.show = self.mesh_config.show
                 if self.mesh_config.color is not None:
                     fieldmap_collection.mesh.color = self.mesh_config.color
                 if self.mesh_config.line_thickness is not None:
@@ -551,7 +733,8 @@ class ZoneStyleConfig:
                 print(f"Warning: Could not apply mesh settings to fieldmap collection: {e}")
 
             try:
-                fieldmap_collection.contour.show = self.contour_config.show
+                if self.contour_config.show or not assume_layers_off:
+                    fieldmap_collection.contour.show = self.contour_config.show
                 if self.contour_config.translucency is not None:
                     try:
                         fieldmap_collection.effects.use_translucency = True
@@ -563,7 +746,8 @@ class ZoneStyleConfig:
                 print(f"Warning: Could not apply contour settings to fieldmap collection: {e}")
 
             try:
-                fieldmap_collection.shade.show = self.shade_config.show
+                if self.shade_config.show or not assume_layers_off:
+                    fieldmap_collection.shade.show = self.shade_config.show
                 if self.shade_config.color is not None:
                     fieldmap_collection.shade.color = self.shade_config.color
                 if self.shade_config.translucency is not None:
@@ -577,12 +761,14 @@ class ZoneStyleConfig:
                 print(f"Warning: Could not apply shade settings to fieldmap collection: {e}")
 
             try:
-                fieldmap_collection.vector.show = self.vector_config.show
+                if self.vector_config.show or not assume_layers_off:
+                    fieldmap_collection.vector.show = self.vector_config.show
             except Exception as e:
                 print(f"Warning: Could not apply vector settings to fieldmap collection: {e}")
 
             try:
-                fieldmap_collection.edge.show = self.edge_config.show
+                if self.edge_config.show or not assume_layers_off:
+                    fieldmap_collection.edge.show = self.edge_config.show
             except Exception as e:
                 print(f"Warning: Could not apply edge settings to fieldmap collection: {e}")
 

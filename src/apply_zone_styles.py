@@ -412,9 +412,8 @@ def apply_zone_styles():
             ),
         )
 
-        # Get all zones and zone names in bulk (more efficient than accessing zone.name in loop)
+        # Get all zones in bulk (more efficient than accessing zone.name in loop)
         zones = list(dataset.zones())
-        zone_names = dataset.zone_names
         print(f"Processing {len(zones)} zones...")
 
         enabled_indices = set()  # Collect fieldmap indices of enabled zones
@@ -435,9 +434,12 @@ def apply_zone_styles():
 
         # Group zones by whether they have computed properties for optimized bulk operations
         # Group A (constant configs): zones with no computed properties → can use bulk fieldmap operations
-        # Group B (computed properties): zones with color/size functions → must use per-zone styling
+        # Group B (computed properties): zones whose color/size functions are resolved
+        #   locally into constant configs, then bucketed by identical resolved style
+        #   so each bucket shares one bulk fieldmap operation
         group_a_zones = []  # Constant-config zones (optimizable for bulk operations)
-        group_b_zones = []  # Computed-property zones (must use per-zone styling)
+        group_b_buckets = {}  # style_key -> [resolved_config, [fieldmap_indices]]
+        group_b_zone_count = 0
 
         # Get frame and plot once for fieldmap lookups (more efficient than per-zone)
         frame = tecplot.active_frame()
@@ -447,17 +449,37 @@ def apply_zone_styles():
         # Also pre-compute and cache fieldmap indices for all zones
         condensed_basin_sphere_critical_indices = set()
         start_time = time.perf_counter()
-        for zone in zones:
-            # Cache aux_data as dictionary to avoid multiple lookups
-            aux_data_dict = zone.aux_data.as_dict() if zone.aux_data else {}
+        # Fieldmap index normally equals zone index (single dataset attached to
+        # the frame). Verify with first/last zone samples; if it holds, use the
+        # free enumerate index instead of an RPC round-trip per zone.
+        fieldmap_index_matches_zone_index = False
+        if plot is not None and zones:
+            try:
+                fieldmap_index_matches_zone_index = (
+                    plot.num_fieldmaps == len(zones)
+                    and plot.fieldmap_index(zones[0]) == 0
+                    and plot.fieldmap_index(zones[-1]) == len(zones) - 1
+                )
+            except Exception:
+                fieldmap_index_matches_zone_index = False
+
+        for zi, zone in enumerate(zones):
+            # Cache aux_data as dictionary to avoid multiple lookups.
+            # NOTE: zone.aux_data constructs a new AuxData object (with RPC
+            # round-trips) on every property access -- fetch it only once.
+            aux_data = zone.aux_data
+            aux_data_dict = aux_data.as_dict() if aux_data else {}
             zone._aux_data_cache = aux_data_dict
-            
+
             # Pre-compute fieldmap index for this zone (avoid per-zone lookup later)
             if plot is not None:
-                try:
-                    zone._fieldmap_index = plot.fieldmap_index(zone)
-                except Exception:
-                    zone._fieldmap_index = None
+                if fieldmap_index_matches_zone_index:
+                    zone._fieldmap_index = zi
+                else:
+                    try:
+                        zone._fieldmap_index = plot.fieldmap_index(zone)
+                    except Exception:
+                        zone._fieldmap_index = None
             else:
                 zone._fieldmap_index = None
             
@@ -540,8 +562,18 @@ def apply_zone_styles():
 
             # Route zones to appropriate group based on whether they have computed properties
             if has_computed_properties(config):
-                # Group B: Zones with computed properties (must use per-zone styling)
-                group_b_zones.append(zone)
+                # Group B: resolve computed color/size values locally (pure Python
+                # on cached aux data) and bucket zones whose resolved styles are
+                # identical, so each bucket shares one bulk fieldmap operation
+                # (e.g., all atoms of the same element share color and size).
+                resolved_config = config.resolve_for_zone(zone)
+                style_key = resolved_config.style_key()
+                bucket = group_b_buckets.get(style_key)
+                if bucket is None:
+                    group_b_buckets[style_key] = [resolved_config, [zone._fieldmap_index]]
+                else:
+                    bucket[1].append(zone._fieldmap_index)
+                group_b_zone_count += 1
             else:
                 # Group A: Zones with constant configs (can optimize with bulk operations)
                 group_a_zones.append((zone, config))
@@ -549,29 +581,30 @@ def apply_zone_styles():
         elapsed_time = time.perf_counter() - start_time
         print(f"Processed zone analysis in {elapsed_time:.2f} seconds")
         print(f"  Group A (constant configs): {len(group_a_zones)} zones")
-        print(f"  Group B (computed properties): {len(group_b_zones)} zones")
+        print(f"  Group B (computed properties): {group_b_zone_count} zones in {len(group_b_buckets)} style buckets")
 
-        # Apply styling to Group B zones first (computed properties require per-zone handling)
+        # Apply styling to Group B zones using bulk operations per style bucket.
+        # Computed values were resolved locally during the analysis pass, so each
+        # bucket of identically-styled zones shares a single bulk fieldmap call
+        # instead of one RPC-heavy per-zone pass.
         start_time = time.perf_counter()
-        for i, zone in enumerate(group_b_zones):
-            zone_type = zone._aux_data_cache.get("ZoneType")
-            if zone_type == "GradientPath":
-                try:
-                    path_type = zone._aux_data_cache["PathType"]
-                    if path_type in zone_styles:
-                        zone_type = path_type
-                except KeyError:
-                    pass
-            config = zone_styles[zone_type]
-            config.apply_zone_style(zone, skip_visibility=True, fieldmap_index=zone._fieldmap_index, frame=frame, plot=plot)
-            if (i + 1) % max(1, len(group_b_zones) // 10) == 0 or i == len(group_b_zones) - 1:
+        zones_processed = 0
+        for bucket_num, (style_key, (resolved_config, bucket_indices)) in enumerate(group_b_buckets.items(), 1):
+            fieldmap_indices = [i for i in bucket_indices if i is not None]
+            if not fieldmap_indices:
+                continue
+            resolved_config.apply_zone_style_bulk(fieldmap_indices, plot=plot, assume_layers_off=True)
+            zones_processed += len(fieldmap_indices)
+
+            # Update progress (per bucket instead of per zone)
+            if bucket_num % max(1, len(group_b_buckets) // 10) == 0 or bucket_num == len(group_b_buckets):
                 elapsed = time.perf_counter() - start_time
-                rate = (i + 1) / elapsed if elapsed > 0 else 0
-                remaining = (len(group_b_zones) - (i + 1)) / rate if rate > 0 else 0
-                print(f"  Group B: {i + 1}/{len(group_b_zones)} zones styled ({elapsed:.1f}s elapsed, {remaining:.1f}s remaining)")
+                rate = zones_processed / elapsed if elapsed > 0 else 0
+                remaining = (group_b_zone_count - zones_processed) / rate if rate > 0 else 0
+                print(f"  Group B: {zones_processed}/{group_b_zone_count} zones styled in {bucket_num}/{len(group_b_buckets)} buckets ({elapsed:.1f}s elapsed, {remaining:.1f}s remaining)")
 
         elapsed_time = time.perf_counter() - start_time
-        print(f"Applied Group B styling in {elapsed_time:.2f} seconds")
+        print(f"Applied Group B styling (bulk, {len(group_b_buckets)} buckets) in {elapsed_time:.2f} seconds")
 
         # Phase 4: Apply styling to Group A zones using bulk fieldmap operations
         # Group zones by config identity to batch zones with identical configurations
@@ -590,7 +623,9 @@ def apply_zone_styles():
             fieldmap_indices = [zone._fieldmap_index for zone, _ in zone_config_list]
 
             # Apply bulk styling to all zones with this config
-            config.apply_zone_style_bulk(fieldmap_indices, plot=plot)
+            # (assume_layers_off: Phase 5 already disabled all layers in bulk,
+            # so skip redundant show=False RPC writes)
+            config.apply_zone_style_bulk(fieldmap_indices, plot=plot, assume_layers_off=True)
             zones_processed += len(zone_config_list)
 
             # Update progress (per config group instead of per zone)

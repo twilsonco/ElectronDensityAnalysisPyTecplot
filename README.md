@@ -183,6 +183,39 @@ If not, set the environment variable:
 
 ## Usage
 
+> ### IMPORTANT: Always run scripts with `python -O`
+>
+> **Always pass the `-O` (optimize) flag when running these scripts**, in both batch and connected mode:
+>
+> ```bash
+> python -O src/apply_zone_styles.py
+> uv run python -O src/apply_zone_styles.py
+> ```
+>
+> **Why:** PyTecplot's `lock_attributes` decorator runs an extremely expensive
+> `inspect.stack()` call on *every attribute assignment* of every Tecplot object
+> (Zone, FieldMap, AuxData, Style, ...). These checks are guarded by
+> `if __debug__:`, so the `-O` flag disables them entirely. Profiling this
+> project's workload showed `inspect.stack()` accounting for **~57% of total
+> runtime** (11 of 19 seconds). Measured on a 237-zone dataset in connected
+> mode:
+>
+> | Command | Runtime |
+> |---|---|
+> | `python src/apply_zone_styles.py` | 19.2s |
+> | `python -O src/apply_zone_styles.py` | 7.0s |
+> | `python -O` + all code-level optimizations | **2.2s** |
+>
+> `run_batch.sh` already includes `-O`. For connected mode, you must pass it yourself.
+>
+> **What about `-OO`?** The PyTecplot documentation recommends the `-OO` flag, but
+> `-O` is sufficient here. The difference: `-O` disables `assert` statements and all
+> `if __debug__:` blocks (where every expensive PyTecplot run-time check lives),
+> while `-OO` additionally strips docstrings — a memory saving only, with no extra
+> speed benefit. Both levels skip PyTecplot's argument validation, so invalid values
+> are sent to the engine instead of raising a clean Python `TecplotTypeError`; keep
+> defensive `try/except` handling around styling calls accordingly.
+
 ### Running Scripts in Batch Mode (Recommended)
 
 **Batch mode** is the recommended approach for running PyTecplot scripts. It runs significantly faster than connected mode because PyTecplot directly interfaces with the Tecplot engine libraries rather than communicating through sockets with the GUI.
@@ -224,8 +257,8 @@ If you prefer to set up the environment manually:
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run with tec360-env
-"/Applications/Tecplot 360 EX 2025 R1/bin/tec360-env" -- python src/script_name.py
+# Run with tec360-env (remember the -O flag!)
+"/Applications/Tecplot 360 EX 2025 R1/bin/tec360-env" -- python -O src/script_name.py
 ```
 
 > **Note:** Replace `2025 R1` with your installed version of Tecplot 360 EX.
@@ -298,13 +331,13 @@ If you need to interactively connect to a running Tecplot 360 EX GUI for real-ti
 1. **Start Tecplot 360 EX** with your data file loaded
 2. **Enable PyTecplot connections:**
    - In Tecplot: `Scripting` → `PyTecplot Connections...` → Enable (default port 7600)
-3. **Activate your environment and run:**
+3. **Activate your environment and run (with `-O`!):**
    ```bash
    source .venv/bin/activate
-   python src/apply_zone_styles.py  # Will connect to running GUI
+   python -O src/apply_zone_styles.py  # Will connect to running GUI
    ```
 
-This mode updates the visualization in real-time but is significantly slower due to socket communication overhead. Use batch mode (`apply_zone_styles_batch.py`) for production workflows.
+This mode updates the visualization in real-time but is significantly slower due to socket communication overhead. The `-O` flag is especially important here — it disables PyTecplot's per-attribute `inspect.stack()` checks, which are pure Python overhead on top of the socket cost. Use batch mode (`apply_zone_styles_batch.py`) for production workflows.
 
 ## Zone Type Configurations
 
